@@ -163,3 +163,43 @@ export function firstSegmentMatches(query, resultName) {
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   return qWords.some((w) => firstSegment.includes(w));
 }
+
+// A row whose stated calories disagree with its own macros is corrupt, and
+// the disagreement is the cheapest signal we have that something upstream
+// went wrong.
+//
+// Real instance (2026-07-31): "brown rice" resolved to USDA's "Flour, rice,
+// brown" with calories 1580 against macros of P7/C76/F4 — which imply 368.
+// The ratio is 4.29, i.e. the kJ→kcal factor: the energy nutrient was read
+// in KILOJOULES and stored as kilocalories. USDA publishes both (nutrient
+// 1008 kcal, 1062 kJ) and getNutrient took whichever the API listed first.
+// Every user logging brown rice got numbers 4.3x too high, in a cache shared
+// by two apps, and nothing caught it.
+//
+// Deliberately loose at 30%: Atwater factors are approximations, fibre and
+// sugar alcohols legitimately shift the sum, and alcohol contributes 7
+// kcal/g that these three macros don't capture at all. This is here to catch
+// unit errors and order-of-magnitude corruption, NOT to second-guess real
+// data. Rows with no macros at all are exempt rather than assumed bad.
+export const MACRO_TOLERANCE = 0.3;
+
+// Alcohol contributes 7 kcal/g and appears in NONE of protein/carbs/fat, so
+// a real beer or spirit legitimately reads as "calories far exceed macros".
+// Exempting it explicitly rather than relying on the low-macro floor below,
+// because a higher-carb beer clears that floor and would be flagged as
+// corrupt. This is the same trap as the Miller Lite bug (2026-07-17), where
+// calories were reconstructed from a P/C/F formula that cannot represent
+// alcohol and came out at 16 kcal instead of ~96.
+const ALCOHOL_PATTERN = /\b(beer|ale|lager|stout|porter|ipa|pilsner|wine|champagne|prosecco|cider|mead|sake|vodka|whiskey|whisky|bourbon|rum|gin|tequila|brandy|cognac|liqueur|schnapps|seltzer|spirits?|alcohol(ic)?|cocktail|margarita|mojito)\b/i;
+
+export function caloriesContradictMacros(row) {
+  if (!row) return false;
+  if (ALCOHOL_PATTERN.test(row.name || "")) return false;
+  const cal = Number(row.calories);
+  const p = Number(row.protein) || 0, c = Number(row.carbs) || 0, f = Number(row.fat) || 0;
+  if (!cal || cal <= 0) return false;
+  const implied = p * 4 + c * 4 + f * 9;
+  // No macro data, or a genuinely near-zero-calorie food: nothing to compare.
+  if (implied < 20) return false;
+  return Math.abs(cal - implied) / implied > MACRO_TOLERANCE;
+}

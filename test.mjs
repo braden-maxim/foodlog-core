@@ -97,3 +97,27 @@ try {
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+
+// --- calories contradicting their own macros -------------------------------
+// "brown rice" resolved to USDA's "Flour, rice, brown" with calories 1580
+// against macros implying 368 — a 4.29x gap, i.e. the kJ->kcal factor. The
+// energy nutrient was read in kilojoules. Shared cache, unflagged, live.
+is("kJ-as-kcal corruption caught", core.caloriesContradictMacros({ name: "Flour, rice, brown", calories: 1580, protein: 7, carbs: 76, fat: 4 }), true);
+is("the corrected row passes", core.caloriesContradictMacros({ name: "Flour, rice, brown", calories: 368, protein: 7, carbs: 76, fat: 4 }), false);
+is("ordinary food passes", core.caloriesContradictMacros({ name: "Chicken, breast, cooked", calories: 165, protein: 31, carbs: 0, fat: 3.6 }), false);
+is("pure fat passes", core.caloriesContradictMacros({ name: "Oil, olive", calories: 884, protein: 0, carbs: 0, fat: 100 }), false);
+// Alcohol is 7 kcal/g and in none of the three macros. Flagging it would
+// recreate the Miller Lite bug, where calories were rebuilt from a formula
+// that cannot represent alcohol and came out 16 instead of ~96.
+is("light beer exempt", core.caloriesContradictMacros({ name: "Alcoholic beverage, beer, light", calories: 96, protein: 0.6, carbs: 3.2, fat: 0 }), false);
+is("higher-carb beer exempt", core.caloriesContradictMacros({ name: "Beer, regular", calories: 150, protein: 1.6, carbs: 13, fat: 0 }), false);
+is("wine exempt", core.caloriesContradictMacros({ name: "Wine, table, red", calories: 85, protein: 0.1, carbs: 2.6, fat: 0 }), false);
+
+// --- raw grain must not get the meat conversion ----------------------------
+// Meat loses ~25% cooking so cooked is denser; grains absorb water and roughly
+// triple, so cooked is much LESS dense. Applying meat maths to dry rice gives
+// 487 kcal/100g against a real cooked figure near 130.
+const rawGrain = core.buildEstimatePrompt({ description: "brown rice 200g", dbRef: { name: "Rice, brown, long-grain, raw", calories: 370, protein: 7.9, carbs: 77, fat: 2.9, serving_size: 100, serving_unit: "g", source: "usda" } });
+is("raw grain gets the dry-grain note", /DRY\/UNCOOKED GRAIN/.test(rawGrain), true);
+is("raw grain avoids meat conversion", /÷ 0\.75/.test(rawGrain), false);
+is("raw meat still gets meat conversion", /÷ 0\.75/.test(core.buildEstimatePrompt({ description: "skirt steak 6 oz", dbRef: { name: "Beef, plate steak, inside skirt, raw", calories: 195, protein: 20.1, carbs: 0, fat: 12.8, serving_size: 100, serving_unit: "g", source: "usda" } })), true);

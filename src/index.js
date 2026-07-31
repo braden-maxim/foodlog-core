@@ -15,6 +15,7 @@ export {
   normalizeQuery, relevanceScore, isOverlySpecific, firstSegmentMatches,
   isDryGrainEntry, queryImpliesDry,
   extractSize, brandCacheKey, brandedSizeMismatch,
+  MACRO_TOLERANCE, caloriesContradictMacros,
 } from "./matching.js";
 
 export { BRAND_KEYWORDS, isBranded } from "./brands.js";

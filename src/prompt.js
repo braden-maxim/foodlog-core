@@ -11,6 +11,8 @@
 // dbRef is a nutrition_cache row: { name, calories, protein, carbs, fat,
 // serving_size, serving_unit, source }. Pass null when the lookup missed.
 
+import { GRAIN_PATTERN } from "./matching.js";
+
 export function buildEstimatePrompt({ description, dbRef }) {
   // USDA names its meat/fish entries by PREPARATION STATE, and the raw ones
   // win the relevance match for a bare query like "skirt steak" (there is
@@ -35,7 +37,19 @@ export function buildEstimatePrompt({ description, dbRef }) {
   const isRawRef = /\braw\b|\buncooked\b/.test(dbName);
   const isCookedRef = /\bcooked\b|\bbroiled\b|\broasted\b|\bgrilled\b|\bbraised\b|\bpan-?fried\b|\bbaked\b/.test(dbName);
 
-  const stateNote = isRawRef
+  // A raw GRAIN reference must never get the meat conversion. Meat LOSES
+  // ~25% of its weight cooking, so cooked is denser; grains ABSORB water and
+  // roughly triple in weight, so cooked is far less dense. Applying the meat
+  // maths to dry rice at 365 kcal/100g yields 487 when the real cooked figure
+  // is ~130 — worse than giving no guidance at all. Caught 2026-07-31 while
+  // checking why "brown rice" looked wrong.
+  const isRawGrain = isRawRef && GRAIN_PATTERN.test(dbName);
+
+  const stateNote = isRawGrain
+    ? `\n\nSTATE OF THIS REFERENCE — DRY/UNCOOKED GRAIN. These numbers are for the DRY product. Do NOT scale them against a weight the user stated, and do NOT apply any meat-style conversion — grains absorb water and roughly triple in weight when cooked, so dry values are far denser than cooked ones.
+- Unless the user explicitly said "dry" or "uncooked", treat their stated weight as COOKED and use the COOKED GRAINS & LEGUMES anchors below instead of this reference.
+- Only use the numbers above if the user actually specified a dry/uncooked weight.`
+    : isRawRef
     ? `\n\nSTATE OF THIS REFERENCE — RAW. These numbers are per 100g of RAW weight. Do not scale them directly against a weight the user gave for cooked food.
 - If the user weighed the food RAW (they said "raw", or described it before cooking): apply the values above to their stated weight directly.
 - Otherwise assume the stated weight is COOKED (per the COOKED MEAT WEIGHT rule below). Cooked meat has lost ~25% of its weight as water, so convert first: cooked per-100g = (raw per-100g ÷ 0.75). Apply THAT to their stated weight. Do the same for protein and fat.

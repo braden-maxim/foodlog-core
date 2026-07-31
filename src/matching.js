@@ -248,7 +248,20 @@ export function isOverlySpecific(query, resultName) {
   if (rWords.some((w) => FORM_QUALIFIERS.includes(w)) && !qWords.some((w) => FORM_QUALIFIERS.includes(w))) return true;
 
   if (resultName.split(",").length > 2) return false;
-  const extra = rWords.filter((w) => !qWords.includes(w));
+  // A candidate word that is PART of a compound query word is not "extra".
+  // Users type compounds ("milkshake", "cheeseburger", "peanutbutter") that
+  // USDA splits ("Milk Protein Shake", "Cheese Burger"). Counting each half
+  // separately inflates the extra-word total and rejects a good row: real
+  // case (2026-07-31) "equate ultra filtered milkshake" vs "Equate Ultra
+  // Filtered Milk Protein Shake" counted milk/protein/shake as 3 extra when
+  // only "protein" genuinely is.
+  //
+  // Requires 4+ characters so short fragments can't dissolve real
+  // differences, and the fragment must actually appear inside a query word,
+  // so this can only ever forgive a word the user already half-typed.
+  const partOfCompound = (w) =>
+    w.length >= 4 && qWords.some((q) => q.length > w.length && q.includes(w));
+  const extra = rWords.filter((w) => !qWords.includes(w) && !partOfCompound(w));
   return extra.length > 2;
 }
 

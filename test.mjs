@@ -219,5 +219,17 @@ is("dressed pasta salad is not dry pasta", core.isDryGrainEntry({ name: "PASTA S
 is("dry pasta still detected", core.isDryGrainEntry({ name: "Pasta, dry, enriched", calories: 371, serving_size: 100, serving_unit: "g", fat: 1.5 }), true);
 is("dry oats still detected", core.isDryGrainEntry({ name: "Oats, rolled", calories: 389, serving_size: 100, serving_unit: "g", fat: 6.9 }), true);
 
+
+// --- compound words -------------------------------------------------------
+// Users type compounds that USDA splits. "equate ultra filtered milkshake"
+// vs "Equate Ultra Filtered Milk Protein Shake" counted milk/protein/shake
+// as three extra words when only "protein" genuinely is — a false rejection
+// of a good cached row, costing a needless fresh lookup.
+is("milkshake tolerates Milk...Shake", core.isOverlySpecific("equate ultra filtered milkshake", "Equate Ultra Filtered Milk Protein Shake"), false);
+is("cheeseburger tolerates Cheese Burger", core.isOverlySpecific("cheeseburger", "Cheese Burger, single patty"), false);
+// Must not dissolve real over-specificity.
+is("honey still rejects manuka", core.isOverlySpecific("honey", "Manuka Honey 20+"), true);
+is("white rice still rejects flour", core.isOverlySpecific("white rice", "Flour, rice, white, unenriched"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

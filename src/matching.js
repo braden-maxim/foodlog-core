@@ -138,9 +138,20 @@ export function normalizeQuery(q) {
     .trim();
 }
 
+// Count abbreviations glue a digit to a word ("8piece", "8ct", "12oz"), and
+// the two sides of a match rarely agree on which form. A query of
+// "...nuggets 8piece" against a cached "...Nuggets (8ct)" shared no textual
+// overlap on that token at all, scoring 0.60-0.67 and needlessly rejecting
+// ~10 otherwise-good branded rows (2026-07-31). Splitting digit/letter runs
+// lets STOP_WORDS and the length filter drop both forms, so relevance is
+// computed on the real content words.
+//
+// Mild known cost: a product name that IS a digit-letter compound, like V8,
+// splits into two sub-3-character tokens and stops being required content.
+// Rare enough in food queries to be worth the trade.
 // Reject results that don't meaningfully match the query — prevents e.g. "Pizza Hut" matching "kirkland cheese pizza"
 export function relevanceScore(query, resultName) {
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
+  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ");
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   if (!qWords.length) return 1;
   const rNorm = norm(resultName);
@@ -227,7 +238,7 @@ export const SUBTYPE_QUALIFIERS = {
 export const FORM_QUALIFIERS = ["flour", "flours", "bran", "starch", "syrup", "extract", "powder"];
 
 export function isOverlySpecific(query, resultName) {
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   const rWords = norm(resultName).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   // Only checks a base food's qualifier list when the query is actually
@@ -275,7 +286,7 @@ export function firstSegmentMatches(query, resultName) {
   if (!resultName.includes(",")) return true;
   const segments = resultName.split(",");
   if (segments.length > 2) return true; // complex SR Legacy entry — trust relevance score
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
   const firstSegment = norm(segments[0]);
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   return qWords.some((w) => firstSegment.includes(w));
@@ -376,7 +387,7 @@ const FAST_FOOD_RE = /\bfast\s+foods?\b/;
 // SR Legacy one adds 4, so ranking on word count alone picks the wrong row.
 // Venue has to outweigh it.
 export function genericnessRank(query, resultName) {
-  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const norm = (s) => String(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   const words = (s) => norm(s).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   const qWords = words(query);
   const rWords = words(resultName);

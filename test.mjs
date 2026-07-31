@@ -231,5 +231,23 @@ is("cheeseburger tolerates Cheese Burger", core.isOverlySpecific("cheeseburger",
 is("honey still rejects manuka", core.isOverlySpecific("honey", "Manuka Honey 20+"), true);
 is("white rice still rejects flour", core.isOverlySpecific("white rice", "Flour, rice, white, unenriched"), true);
 
+
+// --- count abbreviations and apostrophes -----------------------------------
+// Found by scanning the live cache (2026-07-31): ~10 branded rows scored
+// 0.60-0.67 and would be needlessly rejected. Two separate causes.
+//
+// A digit glued to a word ("8piece" vs "8ct") shares no textual overlap, so
+// the count token counted as required content neither side could satisfy.
+is("8piece matches 8ct", core.relevanceScore("chick fil a nuggets 8piece", "Chick-fil-A Nuggets (8ct)") >= core.MIN_SCORE, true);
+is("4piece matches 4ct", core.relevanceScore("chick fil a chicken strips 4piece", "Chick-fil-A Chicken Strips (4ct)") >= core.MIN_SCORE, true);
+// An apostrophe became a SPACE, so "PJ's" normalised to "pj s" while a user
+// typing "pjs" stayed "pjs". Apostrophes are now stripped, hyphens still
+// become spaces (Chick-fil-A needs that).
+is("pjs matches PJ's", core.relevanceScore("pjs coffee 20oz", "PJ's Coffee Iced Latte (20 oz)") >= core.MIN_SCORE, true);
+is("kinders matches Kinder's", core.relevanceScore("kinders bbq sauce", "Kinder's Hickory BBQ Sauce") >= core.MIN_SCORE, true);
+// None of this may loosen the real guards.
+is("honey still rejects manuka", core.isOverlySpecific("honey", "Manuka Honey 20+"), true);
+is("white rice still rejects glutinous", core.isOverlySpecific("white rice", "Rice, white, glutinous, unenriched, cooked"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

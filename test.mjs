@@ -120,5 +120,34 @@ is("raw grain gets the dry-grain note", /DRY\/UNCOOKED GRAIN/.test(rawGrain), tr
 is("raw grain avoids meat conversion", /÷ 0\.75/.test(rawGrain), false);
 is("raw meat still gets meat conversion", /÷ 0\.75/.test(core.buildEstimatePrompt({ description: "skirt steak 6 oz", dbRef: { name: "Beef, plate steak, inside skirt, raw", calories: 195, protein: 20.1, carbs: 0, fat: 12.8, serving_size: 100, serving_unit: "g", source: "usda" } })), true);
 
+
+// --- energy unit safety ----------------------------------------------------
+// USDA publishes energy in kcal AND kJ; a naive .find() took whichever came
+// first, putting 1580 kcal on brown rice instead of 368.
+is("prefers kcal over kJ", core.energyKcal([{ nutrientId: 1062, unitName: "kJ", value: 1540 }, { nutrientId: 1008, unitName: "KCAL", value: 368 }]), 368);
+is("kJ listed first still yields kcal", core.energyKcal([{ nutrientId: 1008, unitName: "kJ", value: 1540 }, { nutrientId: 1008, unitName: "KCAL", value: 368 }]), 368);
+is("converts when only kJ exists", core.energyKcal([{ nutrientId: 1062, unitName: "kJ", value: 1540 }]), 368);
+is("no energy nutrient", core.energyKcal([{ nutrientId: 1003, unitName: "G", value: 31 }]), null);
+
+// --- form qualifiers -------------------------------------------------------
+// Flour is not rice. These slip past the word-count guard because the
+// multi-segment name trips the comma bypass first.
+is("rice rejects rice flour", core.isOverlySpecific("white rice", "Flour, rice, white, unenriched"), true);
+is("corn rejects corn syrup", core.isOverlySpecific("corn", "Syrup, corn, high-fructose"), true);
+is("garlic rejects garlic powder", core.isOverlySpecific("garlic", "Spices, garlic powder"), true);
+is("explicit rice flour allowed", core.isOverlySpecific("rice flour", "Flour, rice, white, unenriched"), false);
+// "oil" and "milk" are deliberately NOT form qualifiers -- these must pass.
+is("tuna canned in oil is still tuna", core.isOverlySpecific("tuna", "Tuna, light, canned in oil, drained"), false);
+is("whole milk yogurt is still yogurt", core.isOverlySpecific("yogurt", "Yogurt, whole milk, plain"), false);
+
+// --- dry grains by density -------------------------------------------------
+// serving_size < 70 was a no-op for SR Legacy rows, which always fall back to
+// 100 -- exactly the raw-grain entries the guard existed to catch.
+is("SR Legacy raw rice at serving 100", core.isDryGrainEntry({ name: "Rice, white, long-grain, regular, raw", serving_size: 100, calories: 365 }), true);
+is("dense dry oats with no state word", core.isDryGrainEntry({ name: "Oats, rolled", serving_size: 100, calories: 389 }), true);
+is("cooked rice not dry", core.isDryGrainEntry({ name: "Rice, white, long-grain, cooked", serving_size: 100, calories: 130 }), false);
+is("cooked beans not dry", core.isDryGrainEntry({ name: "Beans, black, mature seeds, cooked, boiled", serving_size: 100, calories: 132 }), false);
+is("non-grain unaffected", core.isDryGrainEntry({ name: "Chicken, breast, cooked", serving_size: 100, calories: 165 }), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -21,9 +21,35 @@ export const MIN_SCORE = 0.75;
 
 export const GRAIN_PATTERN = /\b(rice|oat|oats|pasta|quinoa|barley|farro|lentil|lentils|couscous|bulgur|millet|buckwheat|grits|polenta|beans?|chickpeas?|garbanzo|pinto|cannellini|kidney|navy)\b/i;
 
-// Returns true if the result looks like a dry/uncooked grain entry (small serving = typical dry weight)
+// Is this row DRY-weight grain/legume data, which must not be scaled against
+// a weight the user stated for cooked food?
+//
+// The original test was `serving_size < 70` -- a small serving implying a dry
+// portion. That is a no-op for the entries that matter most: USDA Foundation
+// and SR Legacy records carry no servingSize, both apps fall back to 100, and
+// 100 is never < 70. So raw rice at 365 kcal/100g sailed through, which is
+// precisely the case the guard was written for. Reported by the portal
+// 2026-07-31 and confirmed here.
+//
+// Density is the reliable signal. Dry grains and legumes run 340-390
+// kcal/100g; their cooked forms run 70-160. Nothing sits near 250.
+export const DRY_GRAIN_KCAL_PER_100G = 250;
+
 export function isDryGrainEntry(result) {
-  return result.serving_size < 70 && GRAIN_PATTERN.test(result.name);
+  if (!result || !GRAIN_PATTERN.test(result.name || "")) return false;
+  const name = String(result.name).toLowerCase();
+
+  // An explicit preparation state in the name beats any inference.
+  if (/\bcooked\b|\bboiled\b|\bsteamed\b/.test(name)) return false;
+  if (/\braw\b|\bdry\b|\buncooked\b/.test(name)) return true;
+
+  const size = Number(result.serving_size);
+  if (size && size < 70) return true;   // original heuristic, still valid
+
+  const cal = Number(result.calories);
+  if (!cal) return false;
+  const per100 = size ? (cal / size) * 100 : cal;
+  return per100 > DRY_GRAIN_KCAL_PER_100G;
 }
 
 // Returns true if the user's original query explicitly indicates dry/uncooked
@@ -127,6 +153,24 @@ export const SUBTYPE_QUALIFIERS = {
 // segments, e.g. "Chicken, broilers or fryers, breast, meat only, cooked, roasted")
 // — same exemption firstSegmentMatches already uses, since those extra segments are
 // structural (cut, prep method), not brand specificity.
+
+// Processing forms that make a candidate a DIFFERENT food from the query,
+// not merely a more specific one. "Flour, rice, white" is not rice; corn
+// syrup is not corn; garlic powder is not garlic. These slip past every
+// other guard: the extra-word count is small, and multi-segment USDA names
+// like "Flour, rice, white, unenriched" trip the comma bypass below before
+// the word count is ever reached.
+//
+// Real instance (2026-07-31): a query of "white rice" resolved to "Flour,
+// rice, white, unenriched" at 359 kcal/100g — dry flour, served as if it
+// were rice, in the shared cache.
+//
+// Kept deliberately short. Words like "oil" and "milk" were considered and
+// left out: "Tuna, canned in oil" is legitimately tuna and "Yogurt, whole
+// milk" is legitimately yogurt, so including them would reject good matches.
+// Only forms that genuinely rename the food belong here.
+export const FORM_QUALIFIERS = ["flour", "flours", "bran", "starch", "syrup", "extract", "powder"];
+
 export function isOverlySpecific(query, resultName) {
   const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
@@ -143,6 +187,11 @@ export function isOverlySpecific(query, resultName) {
     const queryMentionsQualifier = qualifiers.some((w) => qWords.includes(w));
     if (!queryMentionsQualifier && rWords.some((w) => qualifiers.includes(w))) return true;
   }
+  // Checked BEFORE the comma bypass, for the same reason the subtype list is:
+  // the names this catches are exactly the multi-segment ones the bypass
+  // would wave through.
+  if (rWords.some((w) => FORM_QUALIFIERS.includes(w)) && !qWords.some((w) => FORM_QUALIFIERS.includes(w))) return true;
+
   if (resultName.split(",").length > 2) return false;
   const extra = rWords.filter((w) => !qWords.includes(w));
   return extra.length > 2;
@@ -202,4 +251,36 @@ export function caloriesContradictMacros(row) {
   // No macro data, or a genuinely near-zero-calorie food: nothing to compare.
   if (implied < 20) return false;
   return Math.abs(cal - implied) / implied > MACRO_TOLERANCE;
+}
+
+// USDA publishes food energy in BOTH kilocalories and kilojoules, and a
+// naive .find() on the energy nutrient takes whichever the API happened to
+// list first. That is how "brown rice" ended up cached at 1580 kcal instead
+// of 368 (2026-07-31) -- the kJ value, stored as kcal, 4.29x too high, in a
+// cache shared by two apps.
+//
+// Read the unit instead of assuming it. Prefer a genuine kcal entry; fall
+// back to converting a kJ one rather than returning nothing, since some
+// records carry only kJ.
+const KCAL_PER_KJ = 1 / 4.184;
+
+export function energyKcal(nutrients) {
+  if (!Array.isArray(nutrients)) return null;
+  const energy = nutrients.filter(
+    (n) => n.nutrientId === 1008 || n.nutrientId === 1062 ||
+           n.nutrientNumber === "208" || n.nutrientNumber === "268"
+  );
+  if (!energy.length) return null;
+
+  const unitOf = (n) => String(n.unitName || "").toUpperCase();
+  const kcal = energy.find((n) => unitOf(n) === "KCAL" && Number(n.value) > 0);
+  if (kcal) return Number(kcal.value);
+
+  const kj = energy.find((n) => (unitOf(n) === "KJ" || unitOf(n) === "KILOJOULES") && Number(n.value) > 0);
+  if (kj) return Math.round(Number(kj.value) * KCAL_PER_KJ);
+
+  // No usable unit label. Falling back to the id is what caused the bug, so
+  // only trust id 1008 here, never 1062, and never an unlabelled value.
+  const byId = energy.find((n) => n.nutrientId === 1008 && Number(n.value) > 0 && !unitOf(n));
+  return byId ? Number(byId.value) : null;
 }

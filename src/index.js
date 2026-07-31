@@ -17,6 +17,7 @@ export {
   extractSize, brandCacheKey, brandedSizeMismatch,
   MACRO_TOLERANCE, caloriesContradictMacros,
   FORM_QUALIFIERS, DRY_GRAIN_KCAL_PER_100G, energyKcal,
+  VENUE_QUALIFIERS, genericnessRank,
 } from "./matching.js";
 
 export { BRAND_KEYWORDS, isBranded } from "./brands.js";

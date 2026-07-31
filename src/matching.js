@@ -296,3 +296,42 @@ export function energyKcal(nutrients) {
   const byId = energy.find((n) => n.nutrientId === 1008 && Number(n.value) > 0 && !unitOf(n));
   return byId ? Number(byId.value) : null;
 }
+
+// Where a food was prepared or served, as opposed to what it is. USDA's SR
+// Legacy carries a lot of these -- "Rice, white, steamed, Chinese
+// restaurant", "Fast foods, biscuit", school-lunch entries -- and they are
+// legitimate data, just not what a bare "white rice" query means.
+//
+// Kept separate from FORM_QUALIFIERS, which rejects outright: a venue entry
+// is still the right food, so it should LOSE A TIE rather than be discarded.
+// If it is the only survivor, using it beats returning nothing.
+export const VENUE_QUALIFIERS = ["restaurant", "restaurants", "cafeteria", "cafeterias", "school", "buffet", "diner", "takeout", "vending", "concession"];
+const FAST_FOOD_RE = /\bfast\s+foods?\b/;
+
+// How generic a candidate is for this query. LOWER IS MORE GENERIC, so sort
+// ascending. Used only to break ties in relevance -- every candidate reaching
+// here has already passed the same relevance bar, and the alternative
+// tie-break was whatever order USDA happened to return, which is how "white
+// rice" ended up as restaurant-steamed rice at 151 kcal/100g instead of the
+// canonical 130.
+//
+// NOTE the extra-word count deliberately does NOT dominate. Tested against
+// the real candidates: the restaurant entry adds 3 words and the canonical
+// SR Legacy one adds 4, so ranking on word count alone picks the wrong row.
+// Venue has to outweigh it.
+export function genericnessRank(query, resultName) {
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const words = (s) => norm(s).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+  const qWords = words(query);
+  const rWords = words(resultName);
+  const rNorm = norm(resultName);
+
+  const queryWantsVenue =
+    qWords.some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(norm(query));
+  const isVenue =
+    rWords.some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(rNorm);
+
+  const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
+  const extra = rWords.filter((w) => !qWords.includes(w)).length;
+  return venuePenalty + extra;
+}

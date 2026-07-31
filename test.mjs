@@ -160,5 +160,28 @@ is("cooked rice not dry", core.isDryGrainEntry({ name: "Rice, white, long-grain,
 is("cooked beans not dry", core.isDryGrainEntry({ name: "Beans, black, mature seeds, cooked, boiled", serving_size: 100, calories: 132 }), false);
 is("non-grain unaffected", core.isDryGrainEntry({ name: "Chicken, breast, cooked", serving_size: 100, calories: 165 }), false);
 
+
+// --- generic preference ----------------------------------------------------
+// When several candidates pass every guard with an identical relevance score,
+// the old tie-break was whatever order USDA returned. That is how "white
+// rice" became restaurant-steamed rice at 151 kcal/100g instead of the
+// canonical ~130.
+//
+// Note the extra-word count deliberately does not dominate: measured against
+// the real candidates, the restaurant entry adds 3 words and the canonical
+// SR Legacy row adds 4, so ranking on word count alone picks the WRONG one.
+const riceCandidates = [
+  "Rice, white, steamed, Chinese restaurant",
+  "Rice, white, long-grain, regular, cooked, enriched",
+];
+const pickBy = (q, names) => names.map((n) => ({ n, r: core.genericnessRank(q, n) })).sort((a, b) => a.r - b.r)[0].n;
+is("plain query avoids the venue entry", pickBy("white rice", riceCandidates), "Rice, white, long-grain, regular, cooked, enriched");
+is("explicit venue query finds it", pickBy("chinese restaurant rice", riceCandidates), "Rice, white, steamed, Chinese restaurant");
+is("fast food phrase detected", core.genericnessRank("biscuit", "Fast Foods, biscuit") >= 100, true);
+is("fast food query exempt", core.genericnessRank("fast food biscuit", "Fast Foods, biscuit") < 100, true);
+// A venue entry still wins when it is the only survivor — it is the right
+// food, just context-specific, so using it beats returning nothing.
+is("venue entry not discarded", core.isOverlySpecific("white rice", "Rice, white, steamed, Chinese restaurant"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

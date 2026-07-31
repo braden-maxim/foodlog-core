@@ -29,6 +29,17 @@ is("honey rejects manuka", core.isOverlySpecific("honey", "Manuka Honey 20+"), t
 // Scoped per base food on purpose: an earlier global version of the qualifier
 // list broke ordinary foods where "white" is just a descriptor.
 is("white wine unaffected", core.isOverlySpecific("wine", "Wine, table, white"), false);
+// Found live 2026-07-31: "white rice" was resolving to glutinous (sticky)
+// rice at 97 kcal/100g against regular white rice's ~130 — a 25%
+// underestimate, hidden behind a passing verification run.
+is("white rice rejects glutinous", core.isOverlySpecific("white rice", "Rice, white, glutinous, unenriched, cooked"), true);
+is("rice rejects wild rice", core.isOverlySpecific("rice", "Rice, wild, cooked"), true);
+is("explicit glutinous query allowed", core.isOverlySpecific("glutinous rice", "Rice, white, glutinous, unenriched, cooked"), false);
+// basmati/jasmine are named varieties but nutritionally equivalent, so they
+// must NOT be rejected — listing a qualifier that doesn't change the numbers
+// loses good matches for nothing.
+is("basmati still matches a plain query", core.isOverlySpecific("white rice", "Rice, white, basmati, cooked"), false);
+is("plain long-grain still matches", core.isOverlySpecific("white rice", "Rice, white, long-grain, regular, cooked"), false);
 
 // --- query normalisation ---------------------------------------------------
 // "2 tbsp honey" once failed to match plain honey at all, because unit words

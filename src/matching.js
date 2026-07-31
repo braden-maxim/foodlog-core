@@ -143,6 +143,18 @@ export const SUBTYPE_QUALIFIERS = {
   egg: ["white", "whites", "yolk", "yolks"],
   eggs: ["white", "whites", "yolk", "yolks"],
   honey: ["manuka", "buckwheat", "acacia", "clover", "wildflower", "tupelo", "sourwood", "alfalfa", "sage", "eucalyptus"],
+  // Rice varieties that are NUTRITIONALLY different, not merely named
+  // differently. Found live 2026-07-31: a query of "white rice" resolved to
+  // "Rice, white, glutinous, unenriched, cooked" at 97 kcal/100g against
+  // regular white rice's ~130 -- a 25% underestimate on one of the most
+  // commonly logged foods. Same mechanism as eggs/egg-white: relevance
+  // scores a perfect 1.00 and the 5-comma name trips the bypass below.
+  //
+  // basmati and jasmine are deliberately absent. They are named varieties
+  // too, but nutritionally equivalent to plain white rice, so rejecting them
+  // would lose good matches for no accuracy gain. Only list a qualifier when
+  // it changes the numbers.
+  rice: ["glutinous", "sticky", "wild"],
 };
 
 // relevanceScore alone treats a short/generic query as 100% relevant against any

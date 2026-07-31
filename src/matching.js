@@ -57,12 +57,30 @@ export function isDryGrainEntry(result) {
   if (/\braw\b|\bdry\b|\buncooked\b/.test(name)) return true;
 
   const size = Number(result.serving_size);
-  if (size && size < 70) return true;   // original heuristic, still valid
+  const unit = String(result.serving_unit || "g").toLowerCase();
+  const inGrams = unit === "g" || unit === "gram" || unit === "grams";
 
+  if (inGrams && size && size < 70) return true;   // original heuristic
+
+  // Density fallback, for dry entries whose name states no preparation --
+  // "Oats, rolled" at 389 kcal/100g. Two guards on it, both from live false
+  // positives found 2026-07-31:
+  //
+  // 1. GRAMS ONLY. The formula assumes a gram serving, so a branded row like
+  //    "Chipotle Cilantro-Lime Brown Rice, 210 kcal / 4 oz" computed as 5250
+  //    "kcal/100g" and was rejected as dry grain. Anything measured in oz, ml
+  //    or servings cannot be assessed this way.
+  //
+  // 2. LOW FAT. Dry grains and legumes are almost pure starch -- under ~7g
+  //    fat per 100g. A prepared dish can clear 250 kcal/100g honestly:
+  //    "pasta salad" at 450 kcal/150g is 300, but it is dressed pasta, not
+  //    dry pasta. Fat is what separates them.
   const cal = Number(result.calories);
-  if (!cal) return false;
+  if (!cal || !inGrams) return false;
   const per100 = size ? (cal / size) * 100 : cal;
-  return per100 > DRY_GRAIN_KCAL_PER_100G;
+  if (per100 <= DRY_GRAIN_KCAL_PER_100G) return false;
+  const fatPer100 = size ? (Number(result.fat) || 0) / size * 100 : (Number(result.fat) || 0);
+  return fatPer100 < 10;
 }
 
 // Returns true if the user's original query explicitly indicates dry/uncooked

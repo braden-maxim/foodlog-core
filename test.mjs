@@ -205,5 +205,19 @@ is("rice does not match ricotta", core.relevanceScore("rice", "Cheese, ricotta, 
 is("goat does not match oats", core.relevanceScore("goat", "Oats, rolled") >= core.MIN_SCORE, false);
 is("subtype guard still holds with plurals", core.isOverlySpecific("eggs", "Eggs, Grade A, Large, egg white"), true);
 
+
+// --- dry-grain density needs unit and fat guards ---------------------------
+// Live false positives from the first density implementation (2026-07-31),
+// found by scanning the real cache rather than by any test.
+// The formula assumes a GRAM serving: a branded row at 210 kcal / 4 oz
+// computed as 5250 "kcal/100g" and was rejected as dry grain.
+is("oz serving not assessed by density", core.isDryGrainEntry({ name: "Chipotle Cilantro-Lime Brown Rice 4 oz", calories: 210, serving_size: 4, serving_unit: "oz", fat: 4 }), false);
+is("small oz serving not assessed either", core.isDryGrainEntry({ name: "Boston Market Green Beans (3.2 oz)", calories: 60, serving_size: 3.2, serving_unit: "oz", fat: 2 }), false);
+// A dressed dish can honestly exceed 250 kcal/100g. Fat separates it from
+// dry starch, which runs under ~7g per 100g.
+is("dressed pasta salad is not dry pasta", core.isDryGrainEntry({ name: "PASTA SALAD, PASTA", calories: 450, serving_size: 150, serving_unit: "g", fat: 30 }), false);
+is("dry pasta still detected", core.isDryGrainEntry({ name: "Pasta, dry, enriched", calories: 371, serving_size: 100, serving_unit: "g", fat: 1.5 }), true);
+is("dry oats still detected", core.isDryGrainEntry({ name: "Oats, rolled", calories: 389, serving_size: 100, serving_unit: "g", fat: 6.9 }), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

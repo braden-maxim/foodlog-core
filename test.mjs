@@ -183,5 +183,27 @@ is("fast food query exempt", core.genericnessRank("fast food biscuit", "Fast Foo
 // food, just context-specific, so using it beats returning nothing.
 is("venue entry not discarded", core.isOverlySpecific("white rice", "Rice, white, steamed, Chinese restaurant"), false);
 
+
+// --- preparation words are not content -------------------------------------
+// "steamed white rice" scored every plain cooked-rice entry at 0.67 -- below
+// MIN_SCORE -- because they lack the literal word "steamed", leaving a
+// "Chinese restaurant" row as the only survivor at 1.00. The venue penalty
+// never ran, since genericness only breaks ties WITHIN a relevance tier.
+is("plain rice clears the bar for a steamed query", core.relevanceScore("steamed white rice", "Rice, white, medium-grain, cooked, unenriched") >= core.MIN_SCORE, true);
+is("and outranks the venue entry", core.genericnessRank("steamed white rice", "Rice, white, medium-grain, cooked, unenriched") < core.genericnessRank("steamed white rice", "Rice, white, steamed, Chinese restaurant"), true);
+// "fried" must stay required content -- it adds fat and changes the food.
+is("fried is still content", core.relevanceScore("fried chicken", "Chicken, breast, cooked, roasted") >= core.MIN_SCORE, false);
+
+// --- plural/singular tolerance ---------------------------------------------
+// USDA is inconsistent: "Eggs, Grade A, Large" but "Egg, whole, cooked".
+// A query of "eggs" scored 0.00 against the singular entry and was filtered
+// out before any other guard could run.
+is("eggs matches a singular Egg entry", core.relevanceScore("eggs", "Egg, whole, cooked, hard-boiled") >= core.MIN_SCORE, true);
+is("oats matches Oats", core.relevanceScore("oats", "Oats, rolled") >= core.MIN_SCORE, true);
+// Must not manufacture matches from a shared prefix.
+is("rice does not match ricotta", core.relevanceScore("rice", "Cheese, ricotta, whole milk") >= core.MIN_SCORE, false);
+is("goat does not match oats", core.relevanceScore("goat", "Oats, rolled") >= core.MIN_SCORE, false);
+is("subtype guard still holds with plurals", core.isOverlySpecific("eggs", "Eggs, Grade A, Large, egg white"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

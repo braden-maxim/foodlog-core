@@ -15,7 +15,20 @@
 // product and "2 tbsp honey" fail to match plain honey at all. Keep these
 // two lists in sync; a gap here silently reintroduces that bug for whatever
 // word is missing.
-export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","cup","cups","oz","lb","lbs","gram","grams","ounce","ounces","pound","pounds","liter","liters","tub","tubs","jar","jars","container","bag","box","pack","bottle","can","cans","tbsp","tbsps","tablespoon","tablespoons","tsp","tsps","teaspoon","teaspoons","slice","slices","piece","pieces","strip","strips","serving","servings","whole","cooked","fresh","plain","large","small","medium"]);
+//
+// "steamed" and "boiled" sit alongside "cooked" deliberately: they are
+// preparation methods that do not change a food's composition, so requiring
+// them as literal content only narrows the candidate pool. Real case
+// (2026-07-31): "steamed white rice" scored the plain cooked-rice entries at
+// 0.67 -- below MIN_SCORE -- because they lack the word "steamed", leaving a
+// "Chinese restaurant" row as the ONLY survivor at 1.00. The venue penalty
+// never got to run, since genericness only breaks ties within a relevance
+// tier. Stripping the word puts every candidate back in the same tier.
+//
+// "fried" is deliberately NOT here -- it adds fat and genuinely changes the
+// food, so it must stay required content. Same for roasted/grilled/broiled,
+// which USDA uses to distinguish real meat entries.
+export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","cup","cups","oz","lb","lbs","gram","grams","ounce","ounces","pound","pounds","liter","liters","tub","tubs","jar","jars","container","bag","box","pack","bottle","can","cans","tbsp","tbsps","tablespoon","tablespoons","tsp","tsps","teaspoon","teaspoons","slice","slices","piece","pieces","strip","strips","serving","servings","whole","cooked","steamed","boiled","fresh","plain","large","small","medium"]);
 
 export const MIN_SCORE = 0.75;
 
@@ -113,7 +126,19 @@ export function relevanceScore(query, resultName) {
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   if (!qWords.length) return 1;
   const rNorm = norm(resultName);
-  const matches = qWords.filter((w) => rNorm.includes(w));
+  // Tolerate a simple plural/singular difference. USDA is inconsistent about
+  // it -- "Eggs, Grade A, Large" but "Egg, whole, cooked, hard-boiled" -- so a
+  // query of "eggs" scored 0.00 against the singular entry and was filtered
+  // out entirely. Same for "oats", "beans", "grapes". This is not stemming;
+  // it only tries the word with and without a trailing "s", which is enough
+  // for the food names in play and cannot pull in an unrelated match (the
+  // shortened form still has to appear in the candidate).
+  const matchesWord = (w) => {
+    if (rNorm.includes(w)) return true;
+    if (w.length > 3 && w.endsWith("s") && rNorm.includes(w.slice(0, -1))) return true;
+    return rNorm.includes(w + "s");
+  };
+  const matches = qWords.filter(matchesWord);
   return matches.length / qWords.length;
 }
 

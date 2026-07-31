@@ -1,0 +1,11 @@
+{
+  "name": "foodlog-core",
+  "version": "1.0.0",
+  "description": "Shared food-logging logic: query matching against USDA/Open Food Facts, brand detection, and the nutrition estimation prompt.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "files": ["src"],
+  "license": "MIT",
+  "sideEffects": false
+}

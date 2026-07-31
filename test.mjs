@@ -95,8 +95,6 @@ try {
   is("truncation reported as truncated", e.message, "truncated");
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
 
 // --- calories contradicting their own macros -------------------------------
 // "brown rice" resolved to USDA's "Flour, rice, brown" with calories 1580
@@ -121,3 +119,6 @@ const rawGrain = core.buildEstimatePrompt({ description: "brown rice 200g", dbRe
 is("raw grain gets the dry-grain note", /DRY\/UNCOOKED GRAIN/.test(rawGrain), true);
 is("raw grain avoids meat conversion", /÷ 0\.75/.test(rawGrain), false);
 is("raw meat still gets meat conversion", /÷ 0\.75/.test(core.buildEstimatePrompt({ description: "skirt steak 6 oz", dbRef: { name: "Beef, plate steak, inside skirt, raw", calories: 195, protein: 20.1, carbs: 0, fat: 12.8, serving_size: 100, serving_unit: "g", source: "usda" } })), true);
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

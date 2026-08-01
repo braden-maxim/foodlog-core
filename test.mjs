@@ -266,5 +266,9 @@ is("wrong length rejected", core.isValidBarcode("12345"), false);
 is("non-numeric rejected", core.isValidBarcode("hello world"), false);
 is("hyphens tolerated", core.isValidBarcode("0-38000-13841-6"), true);
 
+// An all-zero GTIN passes the check-digit maths (sum 0, check 0) but is not a
+// product. Live: scanning it matched a USDA record with a blank gtinUpc.
+is("all-zero barcode rejected", core.isValidBarcode("0000000000000"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -28,6 +28,10 @@ export function isValidBarcode(raw) {
   const code = normalizeBarcode(raw);
   if (code.length !== 13 && code.length !== 8) return false;
   if (!/^\d+$/.test(code)) return false;
+  // An all-zero GTIN is arithmetically valid (sum 0, check digit 0) but is
+  // not a product. Caught live 2026-08-01: scanning 0000000000000 matched a
+  // USDA record whose own gtinUpc was blank, returning tortilla chips.
+  if (/^0+$/.test(code)) return false;
 
   const digits = code.split("").map(Number);
   const check = digits.pop();

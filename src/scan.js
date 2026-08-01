@@ -55,9 +55,15 @@ export async function scanBarcodeFromFile(file) {
     url = URL.createObjectURL(file);
     const result = await reader.decodeFromImageUrl(url);
     return result?.getText?.() || null;
-  } catch {
-    // zxing throws NotFoundException when no barcode is present, which is the
-    // expected outcome for a plate of food.
+  } catch (e) {
+    // NotFoundException means "no barcode in this image", which is the
+    // expected outcome for a plate of food -- stay quiet for that. Anything
+    // else is a real failure (the WASM chunk failed to load, the image could
+    // not be read) and must not look identical to a miss, or a decoder that
+    // is broken for everyone reads as "nobody scans anything".
+    if (e?.name !== "NotFoundException") {
+      console.error("barcode decode failed", { name: e?.name, message: e?.message });
+    }
     return null;
   } finally {
     if (url) URL.revokeObjectURL(url);

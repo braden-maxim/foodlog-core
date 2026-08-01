@@ -270,5 +270,21 @@ is("hyphens tolerated", core.isValidBarcode("0-38000-13841-6"), true);
 // product. Live: scanning it matched a USDA record with a blank gtinUpc.
 is("all-zero barcode rejected", core.isValidBarcode("0000000000000"), false);
 
+
+// --- quantity parsing ------------------------------------------------------
+// Scaling exact per-serving values is arithmetic; paying a model to multiply
+// by two is waste. But "8 meatballs" when a serving is 4 needs judgement, so
+// anything unclear must return null -- ask the model, never guess. A wrong
+// multiplier silently scales someone's whole day.
+const svc = { serving_size: 28, serving_unit: "g" };
+is("plain number", core.parseQuantity("1", svc), 1);
+is("servings", core.parseQuantity("2 servings", svc), 2);
+is("grams against a gram serving", core.parseQuantity("56g", svc), 2);
+is("unclear returns null", core.parseQuantity("8 meatballs", svc), null);
+is("vague returns null", core.parseQuantity("half the bag", svc), null);
+// A weight is meaningless against a per-piece serving.
+is("grams vs per-piece serving is null", core.parseQuantity("50g", { serving_size: 1, serving_unit: "serving" }), null);
+is("scales and rounds", core.scaleNutrition({ calories: 150, protein: 2, carbs: 16, fat: 9 }, 2), { calories: 300, protein: 4, carbs: 32, fat: 18 });
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

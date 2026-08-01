@@ -24,3 +24,4 @@ export { BRAND_KEYWORDS, isBranded } from "./brands.js";
 export { buildEstimatePrompt } from "./prompt.js";
 export { extractJSON, parseModelJSON } from "./parse.js";
 export { normalizeBarcode, isValidBarcode, barcodeCacheKey } from "./barcode.js";
+export { parseQuantity, scaleNutrition } from "./quantity.js";

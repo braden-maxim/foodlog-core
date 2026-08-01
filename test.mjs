@@ -249,5 +249,22 @@ is("kinders matches Kinder's", core.relevanceScore("kinders bbq sauce", "Kinder'
 is("honey still rejects manuka", core.isOverlySpecific("honey", "Manuka Honey 20+"), true);
 is("white rice still rejects glutinous", core.isOverlySpecific("white rice", "Rice, white, glutinous, unenriched, cooked"), true);
 
+
+// --- barcodes --------------------------------------------------------------
+// All three codes below were verified against Open Food Facts before the
+// feature was scoped, so these are real products, not invented digits.
+is("UPC-A validates", core.isValidBarcode("038000138416"), true);          // Pringles
+is("EAN-13 validates", core.isValidBarcode("5000112637922"), true);        // Coca-Cola
+is("UPC-A pads to EAN-13", core.normalizeBarcode("038000138416"), "0038000138416");
+// One product must yield ONE cache key however the scanner reported it.
+is("both formats share a key", core.barcodeCacheKey("038000138416") === core.barcodeCacheKey("0038000138416"), true);
+is("key is prefixed", core.barcodeCacheKey("038000138416"), "upc:0038000138416");
+// Misreads rejected before they cost a network round trip.
+is("bad check digit rejected", core.isValidBarcode("0038000138417"), false);
+is("altered body digit rejected", core.isValidBarcode("0038000138516"), false);
+is("wrong length rejected", core.isValidBarcode("12345"), false);
+is("non-numeric rejected", core.isValidBarcode("hello world"), false);
+is("hyphens tolerated", core.isValidBarcode("0-38000-13841-6"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

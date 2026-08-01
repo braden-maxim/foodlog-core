@@ -5,6 +5,14 @@
 
 import { energyKcal } from "./matching.js";
 
+// USDA nutrient IDs. These were left behind in the health tracker when
+// buildUsdaResult moved here, and their absence threw a ReferenceError on
+// EVERY call -- which the caller's try/catch swallowed, so USDA lookups
+// silently fell through to Open Food Facts instead of failing loudly.
+// Energy deliberately isn't here: it goes through energyKcal(), which reads
+// the unit rather than trusting an id (see the kJ-as-kcal bug).
+const N_PROTEIN = 1003, N_CARBS = 1005, N_FAT = 1004;
+
 export function getNutrient(nutrients, id) {
   const n = nutrients.find((x) => x.nutrientId === id || x.nutrientNumber === String(id));
   return n ? n.value : null;

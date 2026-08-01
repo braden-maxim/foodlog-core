@@ -286,5 +286,34 @@ is("vague returns null", core.parseQuantity("half the bag", svc), null);
 is("grams vs per-piece serving is null", core.parseQuantity("50g", { serving_size: 1, serving_unit: "serving" }), null);
 is("scales and rounds", core.scaleNutrition({ calories: 150, protein: 2, carbs: 16, fat: 9 }, 2), { calories: 300, protein: 4, carbs: 32, fat: 18 });
 
+
+// --- buildUsdaResult -------------------------------------------------------
+// Moved into this package without its nutrient-ID constants, so it threw a
+// ReferenceError on EVERY call. The caller's try/catch swallowed it, so USDA
+// lookups silently fell through to Open Food Facts rather than failing
+// loudly, and nothing in the build or the suite noticed. Found by the portal
+// on 2026-08-01, ~20 minutes after it shipped.
+const usdaFood = {
+  description: "Celeriac, raw", fdcId: 170400,
+  foodNutrients: [
+    { nutrientId: 1008, unitName: "KCAL", value: 42 },
+    { nutrientId: 1003, unitName: "G", value: 1.5 },
+    { nutrientId: 1005, unitName: "G", value: 9.2 },
+    { nutrientId: 1004, unitName: "G", value: 0.3 },
+  ],
+};
+const usdaRow = core.buildUsdaResult(usdaFood, "celeriac");
+is("returns a row at all", !!usdaRow, true);
+is("calories read", usdaRow.calories, 42);
+// Each macro has its own constant; a single missing one is the whole bug.
+is("protein read", usdaRow.protein, 1.5);
+is("carbs read", usdaRow.carbs, 9.2);
+is("fat read", usdaRow.fat, 0.3);
+is("marked as usda", usdaRow.source, "usda");
+// Energy still goes through the unit-aware reader, so a kJ-only record is
+// converted rather than stored 4.3x high.
+const kjOnly = core.buildUsdaResult({ description: "X", fdcId: 1, foodNutrients: [{ nutrientId: 1062, unitName: "kJ", value: 1540 }, { nutrientId: 1003, unitName: "G", value: 7 }] }, "x");
+is("kJ-only energy converted", kjOnly.calories, 368);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

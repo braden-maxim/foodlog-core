@@ -25,6 +25,9 @@ export { buildEstimatePrompt } from "./prompt.js";
 export { extractJSON, parseModelJSON } from "./parse.js";
 export { normalizeBarcode, isValidBarcode, barcodeCacheKey } from "./barcode.js";
 export { parseQuantity, scaleNutrition } from "./quantity.js";
+export { dayConfidence, weightedIntake, dampingFactor,
+  CONFIDENCE_FULL_SPREAD_H, CONFIDENCE_FULL_ENTRIES,
+  DAMP_DEADBAND, DAMP_SLOPE, DAMP_FLOOR } from "./logQuality.js";
 export { scanBarcodeFromFile } from "./scan.js";
 export { buildPhotoPrompt, buildLabelPrompt } from "./photoPrompts.js";
 export { buildUsdaResult, lookupBarcodeOFF, lookupBarcodeUSDA } from "./sources.js";

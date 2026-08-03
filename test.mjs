@@ -326,5 +326,42 @@ is("null serving, bare number works", core.parseQuantity("1", null), 1);
 is("null serving, weight defers rather than throwing", core.parseQuantity("50g", null), null);
 is("undefined serving is safe too", core.parseQuantity("2", undefined), 2);
 
+
+// --- log quality -----------------------------------------------------------
+// Every case below is a REAL day measured from production logs on 2026-08-03.
+// A partially-logged day read at face value drags a measured-maintenance
+// estimate down, which sets the calorie target too low.
+//
+// Entry count alone misses most of them -- 4, 3 and 11 entries all look
+// healthy. The time spread is what betrays a day that is really one meal.
+is("2 entries at one moment", core.dayConfidence({ entryCount: 2, spreadHours: 0 }), 0);
+is("4 entries inside 6 minutes", core.dayConfidence({ entryCount: 4, spreadHours: 0.1 }) < 0.1, true);
+is("3 entries inside 6 minutes", core.dayConfidence({ entryCount: 3, spreadHours: 0.1 }) < 0.1, true);
+is("11 entries inside 1.7h is one sitting", core.dayConfidence({ entryCount: 11, spreadHours: 1.7 }) < 0.4, true);
+// These two are genuinely light days, not partial logs. They MUST keep full
+// weight -- discounting them would delete the bottom of the distribution and
+// inflate the average, arguing to feed someone more.
+is("8 entries across 11.3h is a real day", core.dayConfidence({ entryCount: 8, spreadHours: 11.3 }), 1);
+is("6 entries across 9.8h is a real day", core.dayConfidence({ entryCount: 6, spreadHours: 9.8 }), 1);
+is("a hand-entered daily total is whole", core.dayConfidence({ entryCount: 1, spreadHours: 0, wholeDayTotal: true }), 1);
+is("no entries is no evidence", core.dayConfidence({ entryCount: 0, spreadHours: 0 }), 0);
+
+// Weighting, not dropping: a partial day shrinks toward zero influence rather
+// than being deleted or counted as a genuine low.
+const wi = core.weightedIntake([
+  { calories: 3000, entryCount: 5, spreadHours: 10 },
+  { calories: 3200, entryCount: 4, spreadHours: 9 },
+  { calories: 450, entryCount: 2, spreadHours: 0 },      // partial -- must not drag the mean
+]);
+is("partial day excluded from the mean", Math.round(wi.average), 3100);
+is("effective days reflects the weighting", wi.effectiveDays, 2);
+
+// --- damping ramp ----------------------------------------------------------
+// Was a hard step: 19% off target kept full strength, 21% dropped to a third.
+is("inside the deadband is untouched", core.dampingFactor(0.19), 1);
+is("just past it barely moves", core.dampingFactor(0.21) > 0.95, true);
+is("far past it approaches the floor", core.dampingFactor(0.8), core.DAMP_FLOOR);
+is("direction does not matter to the ramp itself", core.dampingFactor(-0.5), core.dampingFactor(0.5));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1,81 +1,101 @@
 // How much a day's food log should be trusted as a record of what was eaten.
 //
 // THE PROBLEM
-// Someone logs breakfast and forgets the rest of the day. That day still
-// exists, and read at face value it says "ate 450 kcal" -- indistinguishable
-// from genuinely eating 450 kcal. Averaged into a measured-maintenance
-// calculation it drags the estimate DOWN, which sets the calorie target too
-// low. That is the harmful direction to be wrong in.
+// A day that was only partly logged reads at face value as a genuinely light
+// day -- "ate 1700 kcal" is indistinguishable from actually eating 1700 kcal.
+// Averaged into a measured-maintenance calculation it drags the estimate DOWN,
+// which sets the calorie target too low. That is the harmful direction.
 //
 // WHY NOT JUST DROP THIN DAYS
 // Dropping low days deletes the bottom of the distribution and inflates the
-// average, which argues for feeding someone MORE. Also the wrong direction,
-// just at the other end. Days are weighted instead: an uninformative day
-// shrinks toward zero influence without ever being scored as high or low.
+// average, which argues for feeding someone MORE. Also wrong, at the other end.
+// Days are weighted instead: an uninformative day shrinks toward zero influence
+// without ever being scored as high or low.
 //
-// WHY TIME SPREAD, NOT ENTRY COUNT
-// Entry count alone misses the common case. Measured against real logs:
+// WHY THE CLOCK, NOT ENTRY COUNT
+// Entry count is nearly inert on real data. Across both apps' full exports
+// (2026-08-03) essentially every day clears three entries -- 0 of 41 days in
+// one, ~1 of 72 in the other. A day of 9 items is not evidence of a tracked
+// day: all three athletes in the other app had past days of 7-9 items logged
+// inside 3-4 minutes. The clock is what separates a logged day from a day
+// reconstructed in one sitting. Count is kept only to catch the genuinely thin
+// day, which is rare rather than absent.
 //
-//   450 kcal,  2 entries, spread 0.0h, last 6:42am   <- count catches this
-//   764 kcal,  4 entries, spread 0.1h, last 9:54am   <- count says "fine"
-//   530 kcal,  3 entries, spread 0.1h, last 8:12am   <- count says "fine"
-//  1093 kcal, 11 entries, spread 1.7h, last 6:00pm   <- count says "fine"
+// THE CASE THAT FORCED isCurrentDay
+// A still-running day and a burst-logged finished day have the SAME shape --
+// healthy entry count, tiny spread -- and need opposite treatment. Measured:
 //
-// Four items logged inside six minutes is one breakfast, not a tracked day.
-// Spread is the signal that separates a logged day from a logged meal.
+//   finished, burst-logged   9 items / 3 min    <- complete. Keep it.
+//   still running            10 items / 153 min <- half a day. Discount it.
+//
+// No curve separates those, because span alone cannot see which one it is.
+// The caller knows, so it passes the flag. For a finished day a short span
+// means the logging was compressed; for the current day it means the day is
+// not over. Both apps confirmed the signature: in the other app all three
+// athletes' current-day rows sat far below their own medians (8/222min,
+// 2/155min, 3/1min against medians of 14/754, 9/547, 9/498).
 
-export const CONFIDENCE_FULL_SPREAD_H = 6;   // spread at which a day is fully trusted
+export const CONFIDENCE_FULL_SPREAD_H = 6;   // clock hours at which spread stops limiting
 export const CONFIDENCE_FULL_ENTRIES = 3;    // entries at which count stops limiting
+
+// How far a COMPLETE day logged in a single burst is trusted. This is an
+// assertion neither app has data to calibrate: that reconstructing a day from
+// memory is ~60% as reliable as logging it as you eat. It is named rather than
+// left to fall out of the arithmetic so it can be argued with and revisited.
+export const RECONSTRUCTED_DAY_WEIGHT = 0.6;
+
+// How far a day with no usable timestamps is trusted. Default discounts it,
+// because nothing corroborates the count. An app whose legacy format stored
+// whole-day totals should pass untimedIsWholeDay -- there a missing clock
+// means the format had no clock, not that the day is suspect.
+export const UNTIMED_DAY_WEIGHT = 0.6;
+
+const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
  * @param {object} day
- * @param {number} day.entryCount    how many items were logged
- * @param {number} day.spreadHours   last entry minus first, in hours
- * @param {boolean} [day.wholeDayTotal] a hand-entered daily total -- nothing
- *        partial about it, so it is fully trusted regardless of shape
+ * @param {number} day.entryCount     how many items were logged
+ * @param {number} day.spreadHours    last entry minus first, in hours
+ * @param {boolean} [day.hasTimestamps=true]  false if no entry carried a usable time
+ * @param {boolean} [day.isCurrentDay=false]  true only if this day is STILL ACCRUING.
+ *        Defaults false: a caller that already excludes today never has to think
+ *        about it, and no caller inherits the other's assumption by accident.
+ * @param {object} [opts]
+ * @param {boolean} [opts.untimedIsWholeDay=false]  treat an untimed day as a
+ *        complete hand-entered total (full trust) rather than discounting it
  * @returns {number} 0..1
  */
-export function dayConfidence({ entryCount = 0, spreadHours = 0, wholeDayTotal = false } = {}) {
-  if (wholeDayTotal) return 1;
+export function dayConfidence(
+  { entryCount = 0, spreadHours = 0, hasTimestamps = true, isCurrentDay = false } = {},
+  { untimedIsWholeDay = false } = {}
+) {
   if (!entryCount) return 0;
 
-  // A single entry can never demonstrate a tracked day, however it is timed.
   const byCount = Math.min(1, entryCount / CONFIDENCE_FULL_ENTRIES);
   const bySpread = Math.min(1, spreadHours / CONFIDENCE_FULL_SPREAD_H);
 
-  // Both must hold. A day with many entries in one sitting, or a wide spread
-  // with a single item, is not full evidence -- taking the lower of the two is
-  // what makes the pair meaningful rather than either alone.
-  return Math.round(Math.min(byCount, bySpread) * 100) / 100;
+  // Still accruing. Entries and span so far are LOWER BOUNDS on the finished
+  // day, so neither can vouch for the other -- both must hold, hence the
+  // minimum. This is what makes a half-finished day cheap instead of counting
+  // as a real light day.
+  if (isCurrentDay) return round2(Math.min(byCount, bySpread));
+
+  if (!hasTimestamps) return untimedIsWholeDay ? 1 : round2(byCount * UNTIMED_DAY_WEIGHT);
+
+  // Finished. A short span here means the day was reconstructed in one sitting,
+  // not that it is missing -- so it keeps a floor rather than collapsing.
+  return round2(RECONSTRUCTED_DAY_WEIGHT * byCount
+    + (1 - RECONSTRUCTED_DAY_WEIGHT) * bySpread);
 }
 
 /** Confidence-weighted mean, and the effective number of days behind it. */
-export function weightedIntake(days) {
+export function weightedIntake(days, opts) {
   let wSum = 0, vSum = 0;
   for (const d of days) {
-    const w = dayConfidence(d);
+    const w = dayConfidence(d, opts);
     if (!w) continue;
     wSum += w;
     vSum += w * d.calories;
   }
   return { average: wSum ? vSum / wSum : null, effectiveDays: Math.round(wSum * 10) / 10 };
-}
-
-// Smooth damping ramp for a correction whose evidence is confounded.
-//
-// Replaces a hard step. A step at 20% meant 19% off target kept full strength
-// and 21% dropped to a third of it -- a trivial logging difference visibly
-// moving someone's calorie prescription.
-//
-// The deadband exists because logged intake is a LOWER bound on real intake:
-// people forget meals, they do not invent them. Someone who habitually logs
-// 15% light would otherwise sit permanently damped while eating exactly as
-// prescribed.
-export const DAMP_DEADBAND = 0.20;
-export const DAMP_SLOPE = 2;
-export const DAMP_FLOOR = 0.3;
-
-export function dampingFactor(gapPct) {
-  const excess = Math.abs(gapPct) - DAMP_DEADBAND;
-  return excess > 0 ? Math.max(DAMP_FLOOR, 1 - excess * DAMP_SLOPE) : 1;
 }

@@ -334,34 +334,53 @@ is("undefined serving is safe too", core.parseQuantity("2", undefined), 2);
 //
 // Entry count alone misses most of them -- 4, 3 and 11 entries all look
 // healthy. The time spread is what betrays a day that is really one meal.
-is("2 entries at one moment", core.dayConfidence({ entryCount: 2, spreadHours: 0 }), 0);
-is("4 entries inside 6 minutes", core.dayConfidence({ entryCount: 4, spreadHours: 0.1 }) < 0.1, true);
-is("3 entries inside 6 minutes", core.dayConfidence({ entryCount: 3, spreadHours: 0.1 }) < 0.1, true);
-is("11 entries inside 1.7h is one sitting", core.dayConfidence({ entryCount: 11, spreadHours: 1.7 }) < 0.4, true);
-// These two are genuinely light days, not partial logs. They MUST keep full
-// weight -- discounting them would delete the bottom of the distribution and
-// inflate the average, arguing to feed someone more.
+// --- finished days: short span means compressed logging, not a missing day ---
+is("finished burst: 9 items in 3 min keeps the floor",
+   core.dayConfidence({ entryCount: 9, spreadHours: 0.05 }), core.RECONSTRUCTED_DAY_WEIGHT);
+is("finished burst: 3 items in 1 min keeps the floor",
+   core.dayConfidence({ entryCount: 3, spreadHours: 0.02 }), core.RECONSTRUCTED_DAY_WEIGHT);
+is("genuinely thin finished day scores below the floor",
+   core.dayConfidence({ entryCount: 1, spreadHours: 0 }) < core.RECONSTRUCTED_DAY_WEIGHT, true);
 is("8 entries across 11.3h is a real day", core.dayConfidence({ entryCount: 8, spreadHours: 11.3 }), 1);
 is("6 entries across 9.8h is a real day", core.dayConfidence({ entryCount: 6, spreadHours: 9.8 }), 1);
-is("a hand-entered daily total is whole", core.dayConfidence({ entryCount: 1, spreadHours: 0, wholeDayTotal: true }), 1);
 is("no entries is no evidence", core.dayConfidence({ entryCount: 0, spreadHours: 0 }), 0);
 
-// Weighting, not dropping: a partial day shrinks toward zero influence rather
-// than being deleted or counted as a genuine low.
-const wi = core.weightedIntake([
-  { calories: 3000, entryCount: 5, spreadHours: 10 },
-  { calories: 3200, entryCount: 4, spreadHours: 9 },
-  { calories: 450, entryCount: 2, spreadHours: 0 },      // partial -- must not drag the mean
-]);
-is("partial day excluded from the mean", Math.round(wi.average), 3100);
-is("effective days reflects the weighting", wi.effectiveDays, 2);
+// --- the current day: still accruing, so both signals must hold ---
+is("tracker's real today (10 items / 2.55h) is heavily discounted",
+   core.dayConfidence({ entryCount: 10, spreadHours: 2.55, isCurrentDay: true }), 0.43);
+is("portal athlete today (3 items / 1 min) is near zero",
+   core.dayConfidence({ entryCount: 3, spreadHours: 0.017, isCurrentDay: true }) < 0.01, true);
+is("a current day that already spans the full window is trusted",
+   core.dayConfidence({ entryCount: 8, spreadHours: 11.3, isCurrentDay: true }), 1);
+is("the SAME shape scores far higher once the day is finished",
+   core.dayConfidence({ entryCount: 9, spreadHours: 0.05, isCurrentDay: false })
+     > core.dayConfidence({ entryCount: 9, spreadHours: 0.05, isCurrentDay: true }), true);
 
-// --- damping ramp ----------------------------------------------------------
-// Was a hard step: 19% off target kept full strength, 21% dropped to a third.
-is("inside the deadband is untouched", core.dampingFactor(0.19), 1);
-is("just past it barely moves", core.dampingFactor(0.21) > 0.95, true);
-is("far past it approaches the floor", core.dampingFactor(0.8), core.DAMP_FLOOR);
-is("direction does not matter to the ramp itself", core.dampingFactor(-0.5), core.dampingFactor(0.5));
+// --- isCurrentDay must be a real parameter, not an inherited assumption ---
+is("isCurrentDay defaults to false",
+   core.dayConfidence({ entryCount: 9, spreadHours: 0.05 }),
+   core.dayConfidence({ entryCount: 9, spreadHours: 0.05, isCurrentDay: false }));
+
+// --- untimed days are the caller's call, not the package's ---
+is("untimed day is discounted by default",
+   core.dayConfidence({ entryCount: 6, spreadHours: 0, hasTimestamps: false }),
+   core.UNTIMED_DAY_WEIGHT);
+is("untimed day is whole when the app says its legacy format stored totals",
+   core.dayConfidence({ entryCount: 6, spreadHours: 0, hasTimestamps: false },
+                      { untimedIsWholeDay: true }), 1);
+
+const wi = core.weightedIntake([
+  { calories: 3100, entryCount: 16, spreadHours: 11.4 },
+  { calories: 3100, entryCount: 16, spreadHours: 11.4 },
+  { calories: 1727, entryCount: 10, spreadHours: 2.55, isCurrentDay: true },
+]);
+// unweighted this trio averages 2642; weighting recovers ~215 kcal of that.
+is("a half-finished day barely moves the weighted mean", Math.round(wi.average), 2857);
+is("and barely counts toward effective days", wi.effectiveDays, 2.4);
+is("weightedIntake passes options through to every day",
+   Math.round(core.weightedIntake(
+     [{ calories: 2000, entryCount: 6, spreadHours: 0, hasTimestamps: false }],
+     { untimedIsWholeDay: true }).effectiveDays * 10) / 10, 1);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

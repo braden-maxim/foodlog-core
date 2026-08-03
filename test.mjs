@@ -382,5 +382,24 @@ is("weightedIntake passes options through to every day",
      [{ calories: 2000, entryCount: 6, spreadHours: 0, hasTimestamps: false }],
      { untimedIsWholeDay: true }).effectiveDays * 10) / 10, 1);
 
+// --- dayShape: the translation both apps had written separately ---
+const d1 = core.dayShape([{time:"9:25 AM"},{time:"1:49 PM"},{time:"9:44 PM"}]);
+is("dayShape counts entries", d1.entryCount, 3);
+is("dayShape spans the clock", Math.round(d1.spreadHours * 100) / 100, 12.32);
+is("dayShape sees timestamps", d1.hasTimestamps, true);
+is("one readable time is NOT a spread of zero",
+   core.dayShape([{time:"9:25 AM"},{name:"no time"}]).hasTimestamps, false);
+is("no entries at all", core.dayShape([]).entryCount, 0);
+is("null entries tolerated", core.dayShape(null).entryCount, 0);
+
+is("parses 12-hour with meridiem", core.parseClockMinutes("1:07 PM"), 13 * 60 + 7);
+is("parses midnight hour correctly", core.parseClockMinutes("12:05 AM"), 5);
+is("parses noon hour correctly", core.parseClockMinutes("12:35 PM"), 12 * 60 + 35);
+is("parses a 24-hour locale string", core.parseClockMinutes("13:25"), 13 * 60 + 25);
+is("tolerates the narrow no-break space ICU emits",
+   core.parseClockMinutes("1:07\u202fPM"), 13 * 60 + 7);
+is("rejects an impossible clock", core.parseClockMinutes("25:00"), null);
+is("rejects a non-string", core.parseClockMinutes(undefined), null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

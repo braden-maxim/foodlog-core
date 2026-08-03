@@ -99,3 +99,41 @@ export function weightedIntake(days, opts) {
   }
   return { average: wSum ? vSum / wSum : null, effectiveDays: Math.round(wSum * 10) / 10 };
 }
+
+// Reduce a day's entries to the shape dayConfidence() scores. Both apps had
+// written this separately -- the scoring was shared but the translation into it
+// was not, which is the same drift one layer down.
+//
+// Entries store a locale-formatted clock string, so this parses rather than
+// reading a number. Accepts 12- and 24-hour forms; a 12-hour-only reader
+// silently treats every time in a 24-hour locale as missing, and a day of
+// real entries then scores as untimed.
+export function parseClockMinutes(s) {
+  if (typeof s !== "string") return null;
+  const m = s.trim().match(/^(\d{1,2}):(\d{2})\s*([AaPp])?/);
+  if (!m) return null;
+  let h = +m[1];
+  const min = +m[2];
+  if (m[3]) { const pm = /[Pp]/.test(m[3]); if (h === 12) h = pm ? 12 : 0; else if (pm) h += 12; }
+  return (h > 23 || min > 59) ? null : h * 60 + min;
+}
+
+/**
+ * @param {Array<{time?: string}>} entries a single day's logged items
+ * @param {object} [opts]
+ * @param {string} [opts.timeKey="time"] property holding the clock string
+ * @returns {{entryCount: number, spreadHours: number, hasTimestamps: boolean}}
+ */
+export function dayShape(entries, { timeKey = "time" } = {}) {
+  const list = entries || [];
+  const times = list.map((e) => parseClockMinutes(e && e[timeKey])).filter((t) => t != null);
+  // TWO readable times, not one. A spread cannot be computed from a single
+  // point, and calling that "spread 0" would report a day we know nothing about
+  // as one logged in a single instant -- a different claim.
+  const hasTimestamps = times.length >= 2;
+  return {
+    entryCount: list.length,
+    spreadHours: hasTimestamps ? (Math.max(...times) - Math.min(...times)) / 60 : 0,
+    hasTimestamps,
+  };
+}

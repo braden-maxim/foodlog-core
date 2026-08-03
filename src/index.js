@@ -25,7 +25,7 @@ export { buildEstimatePrompt } from "./prompt.js";
 export { extractJSON, parseModelJSON } from "./parse.js";
 export { normalizeBarcode, isValidBarcode, barcodeCacheKey } from "./barcode.js";
 export { parseQuantity, scaleNutrition } from "./quantity.js";
-export { dayConfidence, weightedIntake,
+export { dayConfidence, weightedIntake, dayShape, parseClockMinutes,
   CONFIDENCE_FULL_SPREAD_H, CONFIDENCE_FULL_ENTRIES,
   RECONSTRUCTED_DAY_WEIGHT, UNTIMED_DAY_WEIGHT } from "./logQuality.js";
 export { scanBarcodeFromFile } from "./scan.js";

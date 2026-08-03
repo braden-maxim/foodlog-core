@@ -17,9 +17,16 @@ const G_PER_LB = 453.592;
  * @param {object} serving     { serving_size, serving_unit } from the row
  * @returns {number|null}      multiplier to apply, or null if unclear
  */
-export function parseQuantity(text, serving = {}) {
+export function parseQuantity(text, serving) {
   const t = String(text || "").trim().toLowerCase();
   if (!t) return null;
+  // Tolerate null, not just undefined. A caller with no structured serving
+  // info -- a nutrition label states its serving as free text like "2/3 cup
+  // (55g)" -- reasonably passes null, and a default parameter does not cover
+  // that. Live bug (2026-08-03): the portal did exactly this, and typing a
+  // weight against a label threw a TypeError. A count still worked, because
+  // that branch returns before the serving is ever read, so it looked fine.
+  const svc = serving || {};
 
   // "2", "1.5", "2 servings", "2 x"
   const servings = t.match(/^(\d+(?:\.\d+)?)\s*(servings?|x|portions?)?$/);
@@ -29,8 +36,8 @@ export function parseQuantity(text, serving = {}) {
   }
 
   // A weight only helps if the serving is itself expressed as a weight.
-  const size = Number(serving.serving_size);
-  const unit = String(serving.serving_unit || "").toLowerCase();
+  const size = Number(svc.serving_size);
+  const unit = String(svc.serving_unit || "").toLowerCase();
   if (!size || size <= 0) return null;
 
   const weight = t.match(/^(\d+(?:\.\d+)?)\s*(g|gram|grams|oz|ounce|ounces|lb|lbs|pound|pounds|ml)$/);

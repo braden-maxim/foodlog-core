@@ -315,5 +315,16 @@ is("marked as usda", usdaRow.source, "usda");
 const kjOnly = core.buildUsdaResult({ description: "X", fdcId: 1, foodNutrients: [{ nutrientId: 1062, unitName: "kJ", value: 1540 }, { nutrientId: 1003, unitName: "G", value: 7 }] }, "x");
 is("kJ-only energy converted", kjOnly.calories, 368);
 
+
+// A caller with no structured serving info reasonably passes null -- a
+// nutrition label states its serving as free text ("2/3 cup (55g)"), not as
+// a number and a unit. A default parameter only covers undefined, so a
+// weight threw a TypeError. A count still worked, because that branch
+// returns before the serving is read, which is why it looked fine.
+is("null serving, count still works", core.parseQuantity("2 servings", null), 2);
+is("null serving, bare number works", core.parseQuantity("1", null), 1);
+is("null serving, weight defers rather than throwing", core.parseQuantity("50g", null), null);
+is("undefined serving is safe too", core.parseQuantity("2", undefined), 2);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

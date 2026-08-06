@@ -47,7 +47,25 @@ export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","c
   // "raw"/"dry"/"uncooked" (the dry-grain guards match on those, and they are a
   // real state distinction rather than a cooking method).
   "baked","grilled","roasted","broiled","seared","sauteed","poached",
-  "braised","stewed","griddled","blackened","oven"]);
+  "braised","stewed","griddled","blackened","oven","charbroiled","chargrilled",
+  "simmered","parboiled","blanched","microwaved","reheated","warmed","heated",
+  // GEOMETRY. Cutting something up does not change what is in it, but these
+  // were being demanded as literal words in a database name that never carries
+  // them: "diced chicken breast" scored 0.50 for exactly the same reason
+  // "baked salmon" did.
+  "sliced","diced","chopped","shredded","minced","cubed","halved","quartered",
+  "grated","crushed",
+  // NEUTRAL STATE. None of these move a macro.
+  "homemade","leftover","leftovers","frozen","thawed","defrosted","chilled",
+  "refrigerated","hot","cold","warm","organic",
+  // Still NOT stop words, and each for a reason: "fried" and "breaded" and
+  // "battered" (oil, coating), "bbq"/"glazed"/"marinated" (sugar), "smoked" and
+  // "cured" and "dried" and "pickled" (a different product), "ground" and
+  // "mashed" (a different cut or preparation with additions), "wild" and
+  // "farmed" (farmed salmon carries roughly twice the fat), "grass"/"fed"
+  // (leaner beef), and "free"/"range" -- "free" alone would swallow "sugar
+  // free" and "fat free", which are exactly the words that matter most.
+  ]);
 
 export const MIN_SCORE = 0.75;
 

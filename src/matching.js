@@ -28,7 +28,26 @@
 // "fried" is deliberately NOT here -- it adds fat and genuinely changes the
 // food, so it must stay required content. Same for roasted/grilled/broiled,
 // which USDA uses to distinguish real meat entries.
-export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","cup","cups","oz","lb","lbs","gram","grams","ounce","ounces","pound","pounds","liter","liters","tub","tubs","jar","jars","container","bag","box","pack","bottle","can","cans","tbsp","tbsps","tablespoon","tablespoons","tsp","tsps","teaspoon","teaspoons","slice","slices","piece","pieces","strip","strips","serving","servings","whole","cooked","steamed","boiled","fresh","plain","large","small","medium"]);
+export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","cup","cups","oz","lb","lbs","gram","grams","ounce","ounces","pound","pounds","liter","liters","tub","tubs","jar","jars","container","bag","box","pack","bottle","can","cans","tbsp","tbsps","tablespoon","tablespoons","tsp","tsps","teaspoon","teaspoons","slice","slices","piece","pieces","strip","strips","serving","servings","whole","cooked","steamed","boiled","fresh","plain","large","small","medium",
+  // COOKING METHODS THAT DO NOT CHANGE THE FOOD. Preparation is handled
+  // elsewhere -- the raw/cooked state note and the yield conversion -- so
+  // leaving these as content words only counted them against the match:
+  // "baked salmon" scored 0.50 against "Salmon, Atlantic, farmed, raw" because
+  // "baked" appears nowhere in the name. Under MIN_SCORE, so the database
+  // returned nothing and the model was left to guess. It guessed 2g of protein
+  // for 81g of salmon.
+  //
+  // The list was already half-doing this: "cooked", "steamed" and "boiled" were
+  // here, so "cooked salmon" worked and "baked salmon" did not -- an
+  // inconsistency nobody would ever report as a rule.
+  //
+  // NOT included, deliberately: "fried" (adds oil and often breading -- there
+  // is a test asserting it stays content), "bbq"/"barbecued" (sauce, so sugar),
+  // "smoked"/"cured"/"dried"/"pickled" (different product), and
+  // "raw"/"dry"/"uncooked" (the dry-grain guards match on those, and they are a
+  // real state distinction rather than a cooking method).
+  "baked","grilled","roasted","broiled","seared","sauteed","poached",
+  "braised","stewed","griddled","blackened","oven"]);
 
 export const MIN_SCORE = 0.75;
 

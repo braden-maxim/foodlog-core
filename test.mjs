@@ -401,5 +401,22 @@ is("tolerates the narrow no-break space ICU emits",
 is("rejects an impossible clock", core.parseClockMinutes("25:00"), null);
 is("rejects a non-string", core.parseClockMinutes(undefined), null);
 
+// A cooking method that does not change the food must not count against the
+// match. "baked salmon" scored 0.50 against every salmon row in the database --
+// under MIN_SCORE -- so the lookup returned nothing and the model guessed 2g of
+// protein for 81g of fish. "cooked salmon" worked the whole time, because that
+// one word happened to be in the stop list and the rest were not.
+for (const prep of ["baked", "grilled", "roasted", "broiled", "seared", "poached", "braised"]) {
+  is(`"${prep} salmon" still matches a plain salmon row`,
+     core.relevanceScore(`${prep} salmon`, "Salmon, Atlantic, farmed, raw") >= core.MIN_SCORE, true);
+}
+// Preparations that DO change the food stay required content.
+is("fried stays content (oil, breading)", core.relevanceScore("fried chicken", "Chicken, breast, cooked, roasted") >= core.MIN_SCORE, false);
+is("smoked stays content (different product)", core.relevanceScore("smoked salmon", "Salmon, Atlantic, farmed, raw") >= core.MIN_SCORE, false);
+is("bbq stays content (sauce, sugar)", core.relevanceScore("bbq chicken", "Chicken, breast, cooked, roasted") >= core.MIN_SCORE, false);
+// The words that were accidentally dropped while adding the above.
+is("cooked is still a stop word", core.relevanceScore("cooked salmon", "Salmon, Atlantic, farmed, raw") >= core.MIN_SCORE, true);
+is("steamed is still a stop word", core.relevanceScore("steamed white rice", "Rice, white, medium-grain, cooked, unenriched") >= core.MIN_SCORE, true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

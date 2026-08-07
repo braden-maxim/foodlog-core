@@ -357,6 +357,13 @@ const DISH_ALIASES = {
   brat: "sausage", bratwurst: "sausage", chorizo: "sausage",
   kielbasa: "sausage", frank: "sausage", franks: "sausage",
   drink: "shake", beverage: "shake",
+  // "sandwich" in a cracker or cookie name is the SHAPE -- two wafers with a
+  // filling -- not a different food. "Crackers, wheat, sandwich, with peanut
+  // butter filling" is exactly what "ritz peanut butter crackers" means, and
+  // the rejection cost real coverage: the same guard runs on the fresh USDA
+  // result, so the query fell through to an unaided estimate.
+  cracker: "sandwich", crackers: "sandwich",
+  cookie: "sandwich", cookies: "sandwich",
 };
 
 const dishFamily = (w) => DISH_FAMILY[w] || w;

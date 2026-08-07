@@ -490,6 +490,8 @@ is("parenthetical is not the food", core.isOverlySpecific("saltine crackers", "C
 is("chili pepper is not the stew", core.isOverlySpecific("chipotle corn salsa", "Chipotle Roasted Chili-Corn Salsa (Medium)"), false);
 is("nor in a tomatillo salsa", core.isOverlySpecific("chipotle tomatillo green salsa", "Chipotle Tomatillo-Green Chili Salsa"), false);
 // Still rejected, and still should be.
+is("sandwich crackers are crackers", core.isOverlySpecific("ritz peanut butter crackers small", "Crackers, wheat, sandwich, with peanut butter filling"), false);
+is("sandwich cookies are cookies", core.isOverlySpecific("peanut butter cookie", "Cookies, peanut butter sandwich, regular"), false);
 is("mac and cheese is not pizza", core.isOverlySpecific("mac and cheese", "MAC ATTACK MAC & CHEESE PIZZA, MAC & CHEESE"), true);
 is("ice cream is not a sandwich", core.isOverlySpecific("ice cream", "Ice cream sandwich"), true);
 

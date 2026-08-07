@@ -495,5 +495,17 @@ is("sandwich cookies are cookies", core.isOverlySpecific("peanut butter cookie",
 is("mac and cheese is not pizza", core.isOverlySpecific("mac and cheese", "MAC ATTACK MAC & CHEESE PIZZA, MAC & CHEESE"), true);
 is("ice cream is not a sandwich", core.isOverlySpecific("ice cream", "Ice cream sandwich"), true);
 
+// --- accent folding --------------------------------------------------------
+// Every normalizer reduces text to [a-z0-9 ], which turned an accented letter
+// into a SPACE: "Entrée" became "entr e". Found 2026-08-07 -- a deliberately
+// seeded "Chipotle Steak Entrée (4 oz)" scored 0.67 against "chipotle steak
+// entree", under MIN_SCORE, so a correct row that existed returned nothing.
+is("accented name matches plain query", core.relevanceScore("chipotle steak entree 4oz", "Chipotle Steak Entr\u00e9e (4 oz)") >= core.MIN_SCORE, true);
+is("two accents in one word", core.relevanceScore("creme brulee", "Cr\u00e8me Br\u00fbl\u00e9e") >= core.MIN_SCORE, true);
+is("tilde folds", core.relevanceScore("chomps jalapeno beef stick", "CHOMPS Jalape\u00f1o Beef Sticks") >= core.MIN_SCORE, true);
+// Both spellings must collapse onto ONE cache key -- they were two before.
+is("accented query folds to one key", core.normalizeQuery("Chomps Jalape\u00f1o Beef Stick"), "chomps jalapeno beef stick");
+is("plain query gives the same key", core.normalizeQuery("Chomps Jalapeno Beef Stick"), "chomps jalapeno beef stick");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

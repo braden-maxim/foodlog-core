@@ -10,6 +10,21 @@
 
 import { BRAND_KEYWORDS } from "./brands.js";
 
+// Accents are FOLDED, not stripped. Every normalizer below reduces text to
+// [a-z0-9 ], and doing that to an accented letter turns it into a SPACE --
+// "Entrée" became "entr e" and "Crème Brûlée" became "cr me br l e", which
+// matches nothing. Found 2026-08-07 in the shared cache, where a deliberately
+// seeded "Chipotle Steak Entrée (4 oz)" scored 0.67 against "chipotle steak
+// entree", under MIN_SCORE -- so the row existed, was correct, and the lookup
+// returned nothing anyway. Same shape as the "baked salmon" bug: the guard was
+// not wrong, the text never survived to be compared.
+//
+// NFD splits a letter from its combining mark; dropping the marks leaves the
+// plain letter. This also collapses "jalapeño" and "jalapeno" onto one cache
+// key, which they should always have shared.
+const foldAccents = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+
 // Every unit word normalizeQuery() strips (both the weight-measurement regex
 // and the container/unit regex below) needs a matching entry here too, or
 // it gets treated as REQUIRED content in relevance scoring instead of a
@@ -166,7 +181,7 @@ export function brandedSizeMismatch(query, cachedRow) {
 }
 
 export function normalizeQuery(q) {
-  return q
+  return foldAccents(q)
     .toLowerCase()
     .trim()
     .replace(/\b\d+(\.\d+)?\s*(g|oz|lb|lbs|gram|grams|ounce|ounces|pound|pounds|ml|kg|mg|l|liter|liters|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons)\b/g, "") // strip weights/measurements
@@ -190,7 +205,7 @@ export function normalizeQuery(q) {
 // Rare enough in food queries to be worth the trade.
 // Reject results that don't meaningfully match the query — prevents e.g. "Pizza Hut" matching "kirkland cheese pizza"
 export function relevanceScore(query, resultName) {
-  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ");
+  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ");
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   if (!qWords.length) return 1;
   const rNorm = norm(resultName);
@@ -369,7 +384,7 @@ const DISH_ALIASES = {
 const dishFamily = (w) => DISH_FAMILY[w] || w;
 
 export function isOverlySpecific(query, resultName) {
-  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
+  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   // A parenthetical in a USDA name is a CROSS-REFERENCE, not the food: "Crackers,
   // saltines (includes oyster, soda, soup)" is a saltine, and the canonical one.
   // Reading "soup" out of that bracket rejected it and left a plain "saltine
@@ -446,7 +461,7 @@ export function firstSegmentMatches(query, resultName) {
   if (!resultName.includes(",")) return true;
   const segments = resultName.split(",");
   if (segments.length > 2) return true; // complex SR Legacy entry — trust relevance score
-  const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
+  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
   const firstSegment = norm(segments[0]);
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   return qWords.some((w) => firstSegment.includes(w));
@@ -547,7 +562,7 @@ const FAST_FOOD_RE = /\bfast\s+foods?\b/;
 // SR Legacy one adds 4, so ranking on word count alone picks the wrong row.
 // Venue has to outweigh it.
 export function genericnessRank(query, resultName) {
-  const norm = (s) => String(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
+  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   const words = (s) => norm(s).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   const qWords = words(query);
   const rWords = words(resultName);
@@ -581,7 +596,7 @@ export function genericnessRank(query, resultName) {
  * which is correct for judging a user's typing and catastrophic against USDA
  * names -- "Salmon, Atlantic, farmed" would read as branded. */
 export function unrequestedVenueOrBrand(query, resultName) {
-  const norm = (s) => String(s).toLowerCase().replace(/['’.]/g, "").replace(/[-–—_]/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’.]/g, "").replace(/[-–—_]/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const qNorm = norm(query);
   const rNorm = norm(resultName);
 

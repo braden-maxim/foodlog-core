@@ -566,6 +566,18 @@ is("chicken tenders still blocked for chicken", core.isOverlySpecific("chicken",
 is("fast food tenders too", core.isOverlySpecific("chicken", "Fast foods, chicken tenders"), true);
 is("asking for a tender still matches", core.isOverlySpecific("chicken tender", "Chicken tenders, breaded, frozen, prepared"), false);
 
+// A plural is not an extra word. "chicken tender" against "Fast foods, chicken
+// tenders" counted "tenders" as extra, which with "fast" and "foods" made
+// three and rejected the row the query plainly asked for. The dish alias was
+// working; the generic extra-word count was what fired. Portal, 2026-08-07.
+is("singular query matches plural row", core.isOverlySpecific("chicken tender", "Fast foods, chicken tenders"), false);
+is("plural query still matches", core.isOverlySpecific("chicken tenders", "Fast foods, chicken tenders"), false);
+is("but a plain query does not", core.isOverlySpecific("chicken", "Fast foods, chicken tenders"), true);
+// The fold must not dissolve a real difference: "egg" vs "egg white" is still
+// two different foods, and a double-s word is left alone.
+is("plural fold does not soften subtypes", core.isOverlySpecific("egg", "Eggs, Grade A, Large, egg white"), true);
+is("grass is not a plural", core.isOverlySpecific("ground beef", "Beef, grass-fed, ground, raw"), true);
+
 // --- implausibly low calorie density ----------------------------------------
 // The one bad-data class no word guard can see: the name is accurate, the
 // macros reconcile against 4/4/9, every text guard passes, and the published

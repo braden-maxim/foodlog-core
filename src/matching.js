@@ -457,7 +457,21 @@ export function isOverlySpecific(query, resultName) {
   // so this can only ever forgive a word the user already half-typed.
   const partOfCompound = (w) =>
     w.length >= 4 && qWords.some((q) => q.length > w.length && q.includes(w));
-  const extra = rWords.filter((w) => !qWords.includes(w) && !partOfCompound(w));
+
+  // A plural is not an extra word. "chicken tender" against "Fast foods,
+  // chicken tenders" counted "tenders" as extra, which with "fast" and "foods"
+  // made three and rejected the row the query plainly asked for. partOfCompound
+  // cannot help here -- it only forgives a result word contained in a LONGER
+  // query word, and this is the other direction.
+  //
+  // Reported by the portal 2026-08-07 as a wrong claim in my own note: the
+  // dish alias was working, the generic extra-word count was what fired.
+  // Applied to both sides so the comparison stays symmetric; a word that is
+  // not really a plural ("grass", "hummus") is transformed identically on both
+  // sides and so is unaffected.
+  const singular = (w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+  const qStems = new Set(qWords.map(singular));
+  const extra = rWords.filter((w) => !qStems.has(singular(w)) && !partOfCompound(w));
 
   // A composite dish the query never asked for is disqualifying on its own,
   // whatever the extra-word count says. One word is the whole difference

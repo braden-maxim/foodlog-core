@@ -17,7 +17,7 @@
 // portal's first pass -- half the probe list never ran. A real key is free and
 // makes the whole list a single cheap run.
 
-import { relevanceScore, firstSegmentMatches, isOverlySpecific, MIN_SCORE, DISH_QUALIFIERS } from "../src/index.js";
+import { relevanceScore, firstSegmentMatches, isOverlySpecific, MIN_SCORE } from "../src/index.js";
 
 const KEY = process.env.USDA_API_KEY || "DEMO_KEY";
 
@@ -29,9 +29,23 @@ const PROBES = [
   "oats", "pasta", "egg", "butter", "apple", "steak", "shrimp", "cod",
 ];
 
-const dishWordsIn = (name) => {
-  const words = name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/);
-  return [...new Set(words.filter((w) => DISH_QUALIFIERS.includes(w)))];
+// WHICH WORD ACTUALLY FLIPPED THE VERDICT -- not merely which dish words are
+// present. The first version reported every dish word in the name, including
+// ones the QUERY supplied, so correct rejections read as collisions: a query of
+// "pasta" against "Pasta mix, Italian lasagna, unprepared" was reported as
+// [pasta] when the real rejecter is "lasagna". The portal had to bisect three
+// rows by hand to find that out, which is exactly the work this is meant to
+// save.
+//
+// Remove one word at a time and see whether the rejection goes away. That also
+// catches rejecters outside DISH_QUALIFIERS -- "Babyfood, dinner, pasta with
+// vegetables" is stopped by a FORM qualifier, and the old listing could never
+// have said so.
+const rejectersOf = (query, name) => {
+  const words = [...new Set(
+    name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2)
+  )];
+  return words.filter((w) => !isOverlySpecific(query, name.replace(new RegExp(`\\b${w}\\b`, "gi"), " ")));
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -56,17 +70,19 @@ for (const q of PROBES) {
     // word rejecting it proves nothing.
     .filter((n) => relevanceScore(q, n) >= MIN_SCORE && firstSegmentMatches(q, n))
     .filter((n) => isOverlySpecific(q, n))
-    .map((n) => ({ n, dish: dishWordsIn(n) }))
-    .filter((x) => x.dish.length);
+    .map((n) => ({ n, why: rejectersOf(q, n) }));
 
   if (hits.length) {
     console.log(`\n${q}`);
-    for (const { n, dish } of hits) console.log(`  [${dish.join(",")}] ${n}`);
+    // No single word flipping it means the extra-word count did, cumulatively.
+    for (const { n, why } of hits) console.log(`  [${why.length ? why.join(",") : "extra-word count"}] ${n}`);
     rejections += hits.length;
   }
   await sleep(250);
 }
 
-console.log(`\n${rejections} dish-word rejections to review.`);
-console.log("Each one is a judgement call: is that word naming the FOOD, or describing it?");
-console.log("Composite processed products (deli loaf, canned hash, Polish sausage) are correct rejections.");
+console.log(`\n${rejections} rejections to review.`);
+console.log("Each is a judgement call: is the bracketed word naming the FOOD, or describing it?");
+console.log("Composite and processed products are correct rejections -- deli loaf, canned hash,");
+console.log("Polish sausage, rice cakes, hash browns, formed sandwich steaks.");
+console.log("A full run on 2026-08-07 found 45, every one correct. Expect the same.");

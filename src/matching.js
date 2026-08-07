@@ -343,7 +343,17 @@ export const FORM_QUALIFIERS = [
 export const DISH_QUALIFIERS = [
   "salad", "sandwich", "wrap", "burger", "cheeseburger", "hamburger", "soup", "stew", "chowder",
   "bisque", "casserole", "pizza", "sushi", "roll", "rolls", "patty", "patties",
-  "nugget", "nuggets", "tender", "tenders", "cake", "cakes", "pie", "dip",
+  "nugget", "nuggets", "tenders", "cake", "cakes", "pie", "dip",
+  // "tender" SINGULAR is not here, and the split is not a guess -- it is what
+  // USDA's own naming does. Every dish-sense tender in the database is plural
+  // ("Fast foods, chicken tenders", "Chicken breast tenders, breaded"); every
+  // singular one is an adjective or a cut: "Beef, chuck, mock tender steak",
+  // "Pork, shoulder petite tender", "HORMEL ALWAYS TENDER". Reported by the
+  // portal 2026-08-07 against a real row, "TENDER RED BEANS & RICE WITH
+  // SAUSAGE", where it blocked a query that had already said sausage.
+  //
+  // It stays in DISH_ALIASES, so a query typing "chicken tender" still counts
+  // as naming the dish -- only the RESULT side stops being disqualified.
   "bowl", "platter", "taco", "tacos", "burrito", "quesadilla", "melt", "sub",
   "curry", "lasagna", "lasagne", "pasta", "smoothie", "shake", "jerky",
   "sausage", "meatball", "meatballs", "loaf", "pate", "mousse", "souffle",
@@ -401,6 +411,7 @@ const DISH_ALIASES = {
   // butter filling" is exactly what "ritz peanut butter crackers" means, and
   // the rejection cost real coverage: the same guard runs on the fresh USDA
   // result, so the query fell through to an unaided estimate.
+  tender: "tender",
   cracker: "sandwich", crackers: "sandwich",
   cookie: "sandwich", cookies: "sandwich",
 };

@@ -550,6 +550,22 @@ is("vegetarian baked beans are baked beans", core.isOverlySpecific("baked beans"
 is("almond milk really is plant based", core.isOverlySpecific("almond milk", "Beverages, almond milk, plant based, unsweetened"), false);
 is("roast chicken still matches", core.isOverlySpecific("grilled chicken", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
 
+// --- tender: adjective vs dish noun -----------------------------------------
+// Reported by the portal 2026-08-07: "red beans and sausage" stayed blocked
+// against "TENDER RED BEANS & RICE WITH SAUSAGE" even after dish families,
+// because "tender" was disqualifying in its ADJECTIVE sense.
+//
+// The singular/plural split is not a guess -- it is USDA's own naming. Every
+// dish-sense tender in the database is plural; every singular one is an
+// adjective or a cut name.
+is("tender as an adjective", core.isOverlySpecific("red beans and sausage", "TENDER RED BEANS & RICE WITH SAUSAGE"), false);
+is("mock tender steak is a cut", core.isOverlySpecific("beef steak", "Beef, chuck, mock tender steak, boneless, choice, raw"), false);
+is("petite tender is a cut", core.isOverlySpecific("pork", "Pork, shoulder petite tender, boneless, separable lean and fat, raw"), false);
+// The dish sense must still be caught, and a query naming it must still match.
+is("chicken tenders still blocked for chicken", core.isOverlySpecific("chicken", "Chicken tenders, breaded, frozen, prepared"), true);
+is("fast food tenders too", core.isOverlySpecific("chicken", "Fast foods, chicken tenders"), true);
+is("asking for a tender still matches", core.isOverlySpecific("chicken tender", "Chicken tenders, breaded, frozen, prepared"), false);
+
 // --- implausibly low calorie density ----------------------------------------
 // The one bad-data class no word guard can see: the name is accurate, the
 // macros reconcile against 4/4/9, every text guard passes, and the published

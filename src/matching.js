@@ -8,6 +8,8 @@
 // PURE FUNCTIONS ONLY. Nothing here knows about users, auth, goals, plans, or
 // training. If a change needs any of that, it does not belong in this package.
 
+import { BRAND_KEYWORDS } from "./brands.js";
+
 // Every unit word normalizeQuery() strips (both the weight-measurement regex
 // and the container/unit regex below) needs a matching entry here too, or
 // it gets treated as REQUIRED content in relevance scoring instead of a
@@ -272,7 +274,21 @@ export const SUBTYPE_QUALIFIERS = {
 // left out: "Tuna, canned in oil" is legitimately tuna and "Yogurt, whole
 // milk" is legitimately yogurt, so including them would reject good matches.
 // Only forms that genuinely rename the food belong here.
-export const FORM_QUALIFIERS = ["flour", "flours", "bran", "starch", "syrup", "extract", "powder"];
+// "prepackaged"/"deli"/"luncheon" earn their place by the same test: sliced
+// deli turkey is a different product from roast turkey breast, not a
+// description of it (15g protein against ~30). Found live 2026-08-07 —
+// "roasted turkey breast" was resolving to "Turkey breast, sliced,
+// prepackaged", and "sliced" being a neutral stop word left "prepackaged" as
+// the lone extra word, comfortably inside the two-word tolerance.
+//
+// "sweetened" is here for the same reason and NOT its opposite: an
+// unrequested "Blueberries, frozen, sweetened" is 85 kcal against ~57. The
+// token is matched exactly, so "unsweetened" is untouched -- a plain query
+// landing on the unsweetened row is the right answer, not a rejection.
+export const FORM_QUALIFIERS = [
+  "flour", "flours", "bran", "starch", "syrup", "extract", "powder",
+  "prepackaged", "deli", "luncheon", "sweetened", "presweetened",
+];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.
  *
@@ -317,7 +333,6 @@ export function isOverlySpecific(query, resultName) {
   // would wave through.
   if (rWords.some((w) => FORM_QUALIFIERS.includes(w)) && !qWords.some((w) => FORM_QUALIFIERS.includes(w))) return true;
 
-  if (resultName.split(",").length > 2) return false;
   // A candidate word that is PART of a compound query word is not "extra".
   // Users type compounds ("milkshake", "cheeseburger", "peanutbutter") that
   // USDA splits ("Milk Protein Shake", "Cheese Burger"). Counting each half
@@ -342,9 +357,17 @@ export function isOverlySpecific(query, resultName) {
   // are describing that same dish rather than changing category -- "Cheese
   // Burger, single patty" is the thing they asked for, and rejecting it over
   // the word "patty" would break a match this suite already protects.
+  //
+  // Checked BEFORE the comma bypass, like the two lists above and for the same
+  // reason -- and this one had to be moved there after the fact. Sitting below
+  // the bypass, it only ever saw names with two or fewer segments, so it caught
+  // "BAKED SALMON SALAD" and waved through USDA's own spelling of the identical
+  // food, "Salmon, baked, salad". Live consequence (2026-08-07): "ground beef"
+  // was answering with "Beef, ground, patties, frozen, cooked, broiled".
   const queryNamesDish = qWords.some((w) => DISH_QUALIFIERS.includes(w));
   if (!queryNamesDish && extra.some((w) => DISH_QUALIFIERS.includes(w))) return true;
 
+  if (resultName.split(",").length > 2) return false;
   return extra.length > 2;
 }
 
@@ -473,4 +496,35 @@ export function genericnessRank(query, resultName) {
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;
   return venuePenalty + extra;
+}
+
+/* A restaurant's version of a food, answering a query that never named the
+ * restaurant. Live case (2026-08-07): "grilled chicken" returned "CAVA Grilled
+ * Chicken" at 250 kcal/4oz -- seeded deliberately under "cava grilled chicken",
+ * then reached by fuzzy match from the plain query. Every existing guard passed
+ * it, because by every one of their measures it IS grilled chicken. The only
+ * thing wrong with it is the word the user didn't type.
+ *
+ * A REJECTION here, unlike genericnessRank's venue penalty, and the asymmetry
+ * is deliberate. That penalty ranks USDA candidates against each other, where
+ * discarding the last survivor means returning nothing at all. This runs on a
+ * cache read, where rejecting means "keep looking" -- and the next step is
+ * USDA, which is exactly the canonical row the penalty was trying to reach.
+ *
+ * Brand detection here is the KEYWORD LIST ONLY, never isBranded(): that
+ * function also treats any capitalised non-leading word as a brand signal,
+ * which is correct for judging a user's typing and catastrophic against USDA
+ * names -- "Salmon, Atlantic, farmed" would read as branded. */
+export function unrequestedVenueOrBrand(query, resultName) {
+  const norm = (s) => String(s).toLowerCase().replace(/['’.]/g, "").replace(/[-–—_]/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const qNorm = norm(query);
+  const rNorm = norm(resultName);
+
+  const brand = BRAND_KEYWORDS.find((b) => rNorm.includes(b));
+  if (brand && !qNorm.includes(brand)) return true;
+
+  const words = (s) => s.split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+  const isVenue = words(rNorm).some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(rNorm);
+  const queryWantsVenue = words(qNorm).some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(qNorm);
+  return isVenue && !queryWantsVenue;
 }

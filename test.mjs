@@ -432,5 +432,41 @@ is("a dish query still matches its dish", core.isOverlySpecific("chicken salad",
 is("hamburger tolerates single patty", core.isOverlySpecific("hamburger", "Hamburger, single patty"), false);
 is("plain food is untouched", core.isOverlySpecific("baked salmon", "Salmon, Atlantic, farmed, raw"), false);
 
+// The dish check used to sit BELOW the >2-segment comma bypass, so it only ever
+// saw short names. It caught the all-caps cache row and waved through USDA's
+// own spelling of the same food. Reported by the portal 2026-08-07, live case:
+// "ground beef" was answering with the frozen-patty row at 295 kcal/23g.
+// These are the multi-segment twins of the four cases above -- if the guard
+// ever drifts back below the bypass, every one of them flips.
+is("multi-segment dish is rejected too", core.isOverlySpecific("baked salmon", "Salmon, baked, salad"), true);
+is("nor chicken to a 4-segment nugget row", core.isOverlySpecific("chicken", "Chicken, nuggets, frozen, cooked"), true);
+is("nor potato to home-prepared potato salad", core.isOverlySpecific("potato", "Potato, salad, home-prepared"), true);
+is("nor ground beef to frozen patties", core.isOverlySpecific("ground beef", "Beef, ground, patties, frozen, cooked, broiled"), true);
+// The bypass still does its job for long names that name no dish at all.
+is("long descriptor names still pass", core.isOverlySpecific("chicken breast", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
+is("and so does ground beef proper", core.isOverlySpecific("ground beef", "Beef, ground, 85% lean meat / 15% fat, raw"), false);
+
+// A processed form is a different product, not a description of one.
+is("roast breast is not deli slices", core.isOverlySpecific("roasted turkey breast", "Turkey breast, sliced, prepackaged"), true);
+is("unrequested sweetening is rejected", core.isOverlySpecific("frozen blueberries", "Blueberries, frozen, sweetened"), true);
+is("but unsweetened is not", core.isOverlySpecific("frozen blueberries", "Blueberries, frozen, unsweetened"), false);
+is("and asking for deli gets deli", core.isOverlySpecific("deli turkey breast", "Turkey breast, sliced, prepackaged"), false);
+
+// --- unrequested venue or brand --------------------------------------------
+// "grilled chicken" was returning "CAVA Grilled Chicken" at 250 kcal/4oz: a row
+// seeded on purpose under "cava grilled chicken", then reached by fuzzy match
+// from the plain query. Nothing else can see this -- by every other measure it
+// IS grilled chicken.
+is("brand the query never named", core.unrequestedVenueOrBrand("grilled chicken", "CAVA Grilled Chicken"), true);
+is("naming the brand still matches it", core.unrequestedVenueOrBrand("cava grilled chicken", "CAVA Grilled Chicken"), false);
+is("hyphenated brand spelling matches", core.unrequestedVenueOrBrand("chick-fil-a grilled chicken", "Chick-fil-A Grilled Chicken"), false);
+is("venue row on a plain query", core.unrequestedVenueOrBrand("white rice", "Rice, white, steamed, Chinese restaurant"), true);
+is("fast food row on a plain query", core.unrequestedVenueOrBrand("biscuit", "Fast foods, biscuit"), true);
+// USDA capitalisation must NOT read as a brand -- this is why the check uses
+// the keyword list and never isBranded(), which treats any capitalised
+// non-leading word as branded.
+is("capitalised USDA name is not a brand", core.unrequestedVenueOrBrand("salmon", "Salmon, Atlantic, farmed, cooked, dry heat"), false);
+is("nor is a plain SR Legacy row", core.unrequestedVenueOrBrand("chicken breast", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

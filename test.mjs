@@ -507,5 +507,31 @@ is("tilde folds", core.relevanceScore("chomps jalapeno beef stick", "CHOMPS Jala
 is("accented query folds to one key", core.normalizeQuery("Chomps Jalape\u00f1o Beef Stick"), "chomps jalapeno beef stick");
 is("plain query gives the same key", core.normalizeQuery("Chomps Jalapeno Beef Stick"), "chomps jalapeno beef stick");
 
+// --- from the live verification run, 2026-08-07 -----------------------------
+// All four queries were typed into the app and the results read out of the
+// Vercel logs. Two of the four came back wrong.
+//
+// "hamburger" -> "WENDY'S, Jr. Hamburger, with cheese". unrequestedVenueOrBrand
+// would have caught it, but that guard runs only on the cache read; the USDA
+// ranking had no brand signal at all. A branded row now takes the same penalty
+// a venue row does -- it loses to any generic candidate, but still wins if it
+// is the only one left.
+is("branded row is penalised", core.genericnessRank("hamburger", "WENDY\u2019S, Jr. Hamburger, with cheese") >= 100, true);
+is("generic row is not", core.genericnessRank("hamburger", "Hamburger, single patty, plain") < 100, true);
+is("naming the brand removes the penalty", core.genericnessRank("wendys hamburger", "WENDY\u2019S, Jr. Hamburger, with cheese") < 100, true);
+
+// "ground beef" -> "Beef, grass-fed, ground, raw", 198 kcal/100g against ~254
+// for conventional 80/20. "grass" and "fed" were deliberately kept out of
+// STOP_WORDS because grass-fed IS leaner -- but nothing acted on that, and the
+// 4-segment name tripped the comma bypass before the extra-word count ran.
+is("grass-fed is a subtype", core.isOverlySpecific("ground beef", "Beef, grass-fed, ground, raw"), true);
+is("asking for grass-fed still works", core.isOverlySpecific("grass fed ground beef", "Beef, grass-fed, ground, raw"), false);
+is("plain ground beef unaffected", core.isOverlySpecific("ground beef", "Beef, ground, 80% lean meat / 20% fat, raw"), false);
+
+// "grilled chicken" -> "Chicken spread", a pate at 17.6g fat/100g. One extra
+// word, no dish word, invisible to every guard.
+is("a spread is not the meat", core.isOverlySpecific("grilled chicken", "Chicken spread"), true);
+is("roast chicken still matches", core.isOverlySpecific("grilled chicken", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

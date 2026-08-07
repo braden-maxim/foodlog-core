@@ -263,6 +263,12 @@ export const SUBTYPE_QUALIFIERS = {
   // would lose good matches for no accuracy gain. Only list a qualifier when
   // it changes the numbers.
   rice: ["glutinous", "sticky", "wild"],
+  // Grass-fed beef is genuinely leaner, which is exactly why "grass" and "fed"
+  // were kept OUT of STOP_WORDS. But nothing acted on that: "ground beef"
+  // resolved to "Beef, grass-fed, ground, raw" at 198 kcal/100g against ~254
+  // for conventional 80/20, and the 4-segment name tripped the comma bypass
+  // before the extra-word count could see it. Live 2026-08-07.
+  beef: ["grass", "fed"],
 };
 
 // relevanceScore alone treats a short/generic query as 100% relevant against any
@@ -303,6 +309,9 @@ export const SUBTYPE_QUALIFIERS = {
 export const FORM_QUALIFIERS = [
   "flour", "flours", "bran", "starch", "syrup", "extract", "powder",
   "prepackaged", "deli", "luncheon", "sweetened", "presweetened",
+  // "grilled chicken" resolved to "Chicken spread" -- a pate, 17.6g fat per
+  // 100g. One extra word, no dish word, nothing else could see it.
+  "spread", "spreads",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.
@@ -573,9 +582,17 @@ export function genericnessRank(query, resultName) {
   const isVenue =
     rWords.some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(rNorm);
 
+  // A BRAND the query never named loses a tie exactly as a venue does, and for
+  // the same reason. Live 2026-08-07: "hamburger" resolved to "WENDY'S, Jr.
+  // Hamburger, with cheese". unrequestedVenueOrBrand would have caught it, but
+  // that runs only on the cache read -- here a rejection could leave nothing,
+  // so the branded row has to lose the ranking instead of being discarded.
+  const rBrand = BRAND_KEYWORDS.find((b) => rNorm.replace(/[-–—_]/g, " ").includes(b));
+  const brandPenalty = rBrand && !norm(query).replace(/[-–—_]/g, " ").includes(rBrand) ? 100 : 0;
+
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;
-  return venuePenalty + extra;
+  return brandPenalty + venuePenalty + extra;
 }
 
 /* A restaurant's version of a food, answering a query that never named the

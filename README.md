@@ -70,3 +70,23 @@ node test.mjs
 ```
 
 Covers the specific bugs above. When changing a guard, add the case that made you change it.
+
+## Maintenance sweep
+
+```bash
+USDA_API_KEY=xxx node scripts/dish-collision-sweep.mjs
+```
+
+Probes plain single-food queries against live USDA and prints the rows a dish
+word rejected, filtered to rows that would otherwise have been accepted. It
+exists because `tender` was disqualifying in its adjective sense (`TENDER RED
+BEANS`, `mock tender steak`) as well as its dish-noun sense, and words like that
+are invisible until a real row trips one.
+
+**Read the output, do not act on the count.** Every rejection found so far has
+been correct — deli loaves, canned hash, Polish sausage are composite products a
+plain query genuinely should not return. Guessing which word is next has already
+been wrong once: `loaf` was the obvious suspect and the data cleared it.
+
+`DEMO_KEY` works but 429s after about five queries, which silently truncates the
+probe list and makes a negative result look stronger than it is. Use a real key.

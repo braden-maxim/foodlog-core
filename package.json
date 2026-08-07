@@ -8,7 +8,8 @@
     ".": "./src/index.js"
   },
   "files": [
-    "src"
+    "src",
+    "scripts"
   ],
   "license": "MIT",
   "sideEffects": false,

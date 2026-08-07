@@ -274,6 +274,28 @@ export const SUBTYPE_QUALIFIERS = {
 // Only forms that genuinely rename the food belong here.
 export const FORM_QUALIFIERS = ["flour", "flours", "bran", "starch", "syrup", "extract", "powder"];
 
+/* A DISH is not its ingredient, and one extra word is enough to make it one.
+ *
+ * The extra-word check below tolerates up to two, which is right for
+ * descriptors -- "Salmon, Atlantic, farmed" is still salmon. It is wrong for
+ * this: a real cache row named "BAKED SALMON SALAD" (90 kcal in a 21g
+ * deli-counter serving) was being returned to anyone typing "baked salmon",
+ * because "salad" was its single extra word. Every other guard passed it. The
+ * user got 2g of protein for 81g of fish.
+ *
+ * Asymmetric on purpose: a query naming the dish still matches the dish. Only
+ * a plain ingredient resolving to a composite is rejected. */
+export const DISH_QUALIFIERS = [
+  "salad", "sandwich", "wrap", "burger", "cheeseburger", "hamburger", "soup", "stew", "chowder",
+  "bisque", "casserole", "pizza", "sushi", "roll", "rolls", "patty", "patties",
+  "nugget", "nuggets", "tender", "tenders", "cake", "cakes", "pie", "dip",
+  "bowl", "platter", "taco", "tacos", "burrito", "quesadilla", "melt", "sub",
+  "curry", "lasagna", "lasagne", "pasta", "smoothie", "shake", "jerky",
+  "sausage", "meatball", "meatballs", "loaf", "pate", "mousse", "souffle",
+  "quiche", "omelet", "omelette", "frittata", "hash", "pilaf", "risotto",
+  "paella", "gumbo", "jambalaya", "chili", "stirfry", "fritter", "croquette",
+];
+
 export function isOverlySpecific(query, resultName) {
   const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
@@ -310,6 +332,19 @@ export function isOverlySpecific(query, resultName) {
   const partOfCompound = (w) =>
     w.length >= 4 && qWords.some((q) => q.length > w.length && q.includes(w));
   const extra = rWords.filter((w) => !qWords.includes(w) && !partOfCompound(w));
+
+  // A composite dish the query never asked for is disqualifying on its own,
+  // whatever the extra-word count says. One word is the whole difference
+  // between a fillet and a deli salad.
+  //
+  // Only when the query names a plain INGREDIENT, though. Once the user has
+  // said "cheeseburger" or "chicken salad", further dish words in the result
+  // are describing that same dish rather than changing category -- "Cheese
+  // Burger, single patty" is the thing they asked for, and rejecting it over
+  // the word "patty" would break a match this suite already protects.
+  const queryNamesDish = qWords.some((w) => DISH_QUALIFIERS.includes(w));
+  if (!queryNamesDish && extra.some((w) => DISH_QUALIFIERS.includes(w))) return true;
+
   return extra.length > 2;
 }
 

@@ -418,5 +418,19 @@ is("bbq stays content (sauce, sugar)", core.relevanceScore("bbq chicken", "Chick
 is("cooked is still a stop word", core.relevanceScore("cooked salmon", "Salmon, Atlantic, farmed, raw") >= core.MIN_SCORE, true);
 is("steamed is still a stop word", core.relevanceScore("steamed white rice", "Rice, white, medium-grain, cooked, unenriched") >= core.MIN_SCORE, true);
 
+// A dish is not its ingredient. A real shared-cache row, "BAKED SALMON SALAD"
+// at 90 kcal in a 21g deli serving, was returned to anyone typing "baked
+// salmon" -- it passed relevance, first-segment, dry-grain, size and macro
+// checks, and its single extra word sat under the extra-word tolerance of 2.
+is("ingredient must not resolve to a dish", core.isOverlySpecific("baked salmon", "BAKED SALMON SALAD"), true);
+is("nor chicken to chicken salad", core.isOverlySpecific("chicken", "Chicken salad"), true);
+is("nor rice to a rice cake", core.isOverlySpecific("rice", "Rice cake"), true);
+is("nor chicken to a chicken patty", core.isOverlySpecific("chicken", "Chicken patty"), true);
+// Asymmetric: once the query names a dish, further dish words describe THAT
+// dish rather than changing category.
+is("a dish query still matches its dish", core.isOverlySpecific("chicken salad", "Chicken salad, with mayo"), false);
+is("hamburger tolerates single patty", core.isOverlySpecific("hamburger", "Hamburger, single patty"), false);
+is("plain food is untouched", core.isOverlySpecific("baked salmon", "Salmon, Atlantic, farmed, raw"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

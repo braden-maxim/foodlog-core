@@ -309,13 +309,67 @@ export const DISH_QUALIFIERS = [
   "curry", "lasagna", "lasagne", "pasta", "smoothie", "shake", "jerky",
   "sausage", "meatball", "meatballs", "loaf", "pate", "mousse", "souffle",
   "quiche", "omelet", "omelette", "frittata", "hash", "pilaf", "risotto",
-  "paella", "gumbo", "jambalaya", "chili", "stirfry", "fritter", "croquette",
+  "paella", "gumbo", "jambalaya", "stirfry", "fritter", "croquette",
+  // "chili" was here and had to come out. It is the pepper far more often than
+  // the stew, and it blocked three deliberately-seeded rows in one scan:
+  // "chipotle corn salsa" -> "Chipotle Roasted Chili-Corn Salsa", plus both
+  // tomatillo salsas. Zero true positives against three false ones. The stew
+  // sense is already covered by "stew".
 ];
+
+/* Which dish words describe the SAME dish. Without this the guard is all or
+ * nothing: either a query names some dish and every dish word in the result is
+ * forgiven, or it names none and they are all fatal. Both halves were wrong.
+ *
+ * Live case for the forgiving half: "hamburger" returned "Rolls, hamburger or
+ * hotdog, plain" -- 279 kcal of BREAD -- because the query said "hamburger",
+ * which switched the guard off entirely, and the two remaining extra words sat
+ * inside the tolerance. A bun is not a burger.
+ *
+ * So the test is containment, not a boolean: every dish family the RESULT names
+ * must be one the QUERY named. "cheeseburger" vs "Cheese Burger, single patty"
+ * passes because patty is the burger family. "hamburger" vs "Rolls, hamburger"
+ * fails because rolls are not.
+ *
+ * Anything absent is its own family, which is the safe default -- it can only
+ * match itself. Only put two words together when one genuinely describes the
+ * other. */
+const DISH_FAMILY = {
+  cheeseburger: "burger", hamburger: "burger", burger: "burger",
+  patty: "burger", patties: "burger",
+  nugget: "nugget", nuggets: "nugget",
+  tender: "tender", tenders: "tender",
+  meatball: "meatball", meatballs: "meatball",
+  cake: "cake", cakes: "cake",
+  lasagna: "lasagna", lasagne: "lasagna",
+  omelet: "omelet", omelette: "omelet",
+  taco: "taco", tacos: "taco",
+  roll: "roll", rolls: "roll",
+};
+
+/* Words that name a dish without BEING one, so a query using them still counts
+ * as having asked for it. "small turkey links" and "cheese and beef stick" were
+ * both rejected against correct sausage rows: neither query contains a dish
+ * word, so every dish word in the result was fatal -- but a breakfast link IS a
+ * sausage. Same for "core power protein drink" against a protein shake. */
+const DISH_ALIASES = {
+  link: "sausage", links: "sausage", stick: "sausage", sticks: "sausage",
+  brat: "sausage", bratwurst: "sausage", chorizo: "sausage",
+  kielbasa: "sausage", frank: "sausage", franks: "sausage",
+  drink: "shake", beverage: "shake",
+};
+
+const dishFamily = (w) => DISH_FAMILY[w] || w;
 
 export function isOverlySpecific(query, resultName) {
   const norm = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
+  // A parenthetical in a USDA name is a CROSS-REFERENCE, not the food: "Crackers,
+  // saltines (includes oyster, soda, soup)" is a saltine, and the canonical one.
+  // Reading "soup" out of that bracket rejected it and left a plain "saltine
+  // crackers" query with no database row at all.
+  const stripParens = (s) => String(s).replace(/\([^)]*\)/g, " ");
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
-  const rWords = norm(resultName).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+  const rWords = norm(stripParens(resultName)).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   // Only checks a base food's qualifier list when the query is actually
   // about that food (qWords includes "egg"/"honey"/etc.) — this is what
   // keeps "rice"/"bread"/"wine" out of the egg qualifier list's blast
@@ -364,8 +418,12 @@ export function isOverlySpecific(query, resultName) {
   // "BAKED SALMON SALAD" and waved through USDA's own spelling of the identical
   // food, "Salmon, baked, salad". Live consequence (2026-08-07): "ground beef"
   // was answering with "Beef, ground, patties, frozen, cooked, broiled".
-  const queryNamesDish = qWords.some((w) => DISH_QUALIFIERS.includes(w));
-  if (!queryNamesDish && extra.some((w) => DISH_QUALIFIERS.includes(w))) return true;
+  const queryDishes = new Set(
+    qWords.filter((w) => DISH_QUALIFIERS.includes(w) || DISH_ALIASES[w])
+          .map((w) => DISH_ALIASES[w] || dishFamily(w))
+  );
+  const resultDishes = extra.filter((w) => DISH_QUALIFIERS.includes(w)).map(dishFamily);
+  if (resultDishes.some((f) => !queryDishes.has(f))) return true;
 
   if (resultName.split(",").length > 2) return false;
   return extra.length > 2;

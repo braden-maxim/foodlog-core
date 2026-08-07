@@ -468,5 +468,30 @@ is("fast food row on a plain query", core.unrequestedVenueOrBrand("biscuit", "Fa
 is("capitalised USDA name is not a brand", core.unrequestedVenueOrBrand("salmon", "Salmon, Atlantic, farmed, cooked, dry heat"), false);
 is("nor is a plain SR Legacy row", core.unrequestedVenueOrBrand("chicken breast", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
 
+// --- dish families and aliases ---------------------------------------------
+// From the 2026-08-07 cache scan, which is where all six of these came from.
+//
+// The guard used to be a boolean: name any dish and every dish word in the
+// result was forgiven. "hamburger" returned "Rolls, hamburger or hotdog,
+// plain" -- 279 kcal of bread -- on exactly that hole.
+is("a bun is not a burger", core.isOverlySpecific("hamburger", "Rolls, hamburger or hotdog, plain"), true);
+is("but a patty still is", core.isOverlySpecific("cheeseburger", "Cheese Burger, single patty"), false);
+is("and a salad query still gets salad", core.isOverlySpecific("chicken salad", "Chicken salad, with mayo"), false);
+// The other half was equally wrong: a query can name a dish without using a
+// dish word for it. A breakfast link IS a sausage.
+is("links are sausage", core.isOverlySpecific("small turkey links", "Sausage, turkey, breakfast links, mild, raw"), false);
+is("sticks are sausage", core.isOverlySpecific("cheese and beef stick", "Sausage, summer, pork and beef, sticks, with cheddar cheese"), false);
+// A parenthetical is a cross-reference, not the food. Reading "soup" out of
+// this bracket rejected the canonical saltine row and left the query with no
+// database answer at all.
+is("parenthetical is not the food", core.isOverlySpecific("saltine crackers", "Crackers, saltines (includes oyster, soda, soup)"), false);
+// "chili" is the pepper far more often than the stew, and blocked three
+// deliberately-seeded Chipotle rows in one scan.
+is("chili pepper is not the stew", core.isOverlySpecific("chipotle corn salsa", "Chipotle Roasted Chili-Corn Salsa (Medium)"), false);
+is("nor in a tomatillo salsa", core.isOverlySpecific("chipotle tomatillo green salsa", "Chipotle Tomatillo-Green Chili Salsa"), false);
+// Still rejected, and still should be.
+is("mac and cheese is not pizza", core.isOverlySpecific("mac and cheese", "MAC ATTACK MAC & CHEESE PIZZA, MAC & CHEESE"), true);
+is("ice cream is not a sandwich", core.isOverlySpecific("ice cream", "Ice cream sandwich"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

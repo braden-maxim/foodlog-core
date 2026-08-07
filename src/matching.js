@@ -312,6 +312,18 @@ export const FORM_QUALIFIERS = [
   // "grilled chicken" resolved to "Chicken spread" -- a pate, 17.6g fat per
   // 100g. One extra word, no dish word, nothing else could see it.
   "spread", "spreads",
+  // MEAT SUBSTITUTES. With "spread" rejected, the same query then resolved to
+  // "Chicken, meatless" -- soy protein, 224 kcal/100g. Worth understanding why
+  // it won: genericnessRank rewards FEW extra words, so a terse wrong name
+  // ("Chicken, meatless", rank 1) outranks the correct "Chicken, broiler or
+  // fryers, breast, skinless, boneless, meat only, cooked, grilled" (rank 7).
+  // Brevity is a bad proxy for generality, and the guard has to catch this
+  // rather than the ranking.
+  //
+  // "vegetarian" and "plant" are deliberately NOT here: vegetarian baked beans
+  // are still baked beans, and almond milk really is plant based, so both
+  // would reject good matches.
+  "meatless", "imitation", "substitute", "substitutes", "analog", "analogue", "vegan",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.

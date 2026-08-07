@@ -538,6 +538,16 @@ is("plain ground beef unaffected", core.isOverlySpecific("ground beef", "Beef, g
 // "grilled chicken" -> "Chicken spread", a pate at 17.6g fat/100g. One extra
 // word, no dish word, invisible to every guard.
 is("a spread is not the meat", core.isOverlySpecific("grilled chicken", "Chicken spread"), true);
+// With the spread rejected, the SAME query then resolved to "Chicken,
+// meatless" -- soy protein at 224 kcal/100g. It won because genericnessRank
+// rewards few extra words, so a terse wrong name (rank 1) outranked the
+// correct SR Legacy one (rank 7). Brevity is a bad proxy for generality.
+is("a meat substitute is not the meat", core.isOverlySpecific("grilled chicken", "Chicken, meatless"), true);
+is("imitation crab is not crab", core.isOverlySpecific("crab", "Crab, imitation, made from surimi"), true);
+is("asking for it still gets it", core.isOverlySpecific("vegan chicken", "Chicken, meatless"), false);
+// Deliberately NOT rejected -- these describe the same food, not a substitute.
+is("vegetarian baked beans are baked beans", core.isOverlySpecific("baked beans", "Beans, baked, canned, vegetarian"), false);
+is("almond milk really is plant based", core.isOverlySpecific("almond milk", "Beverages, almond milk, plant based, unsweetened"), false);
 is("roast chicken still matches", core.isOverlySpecific("grilled chicken", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);

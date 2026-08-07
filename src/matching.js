@@ -587,8 +587,19 @@ export function genericnessRank(query, resultName) {
   // Hamburger, with cheese". unrequestedVenueOrBrand would have caught it, but
   // that runs only on the cache read -- here a rejection could leave nothing,
   // so the branded row has to lose the ranking instead of being discarded.
+  // A NAMED BRAND is worse than a generic venue category, so the two penalties
+  // must not be equal. They were, at 100 each, and "hamburger" still resolved
+  // to "WENDY'S, Jr. Hamburger, with cheese" after the brand penalty shipped:
+  // USDA has no generic hamburger row at all, so every survivor was penalised,
+  // and the extra-word tie-break then preferred the SPECIFIC brand (102) over
+  // the generic fast-food row (105). Ordering the penalties is what makes
+  // "Fast foods, hamburger; single, regular patty; plain" win, which is the
+  // right answer to a bare "hamburger".
+  //
+  // The gap is wide enough that no extra-word count can bridge it -- the whole
+  // point is that brand beats word count, the same reason venue already did.
   const rBrand = BRAND_KEYWORDS.find((b) => rNorm.replace(/[-–—_]/g, " ").includes(b));
-  const brandPenalty = rBrand && !norm(query).replace(/[-–—_]/g, " ").includes(rBrand) ? 100 : 0;
+  const brandPenalty = rBrand && !norm(query).replace(/[-–—_]/g, " ").includes(rBrand) ? 1000 : 0;
 
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;

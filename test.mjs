@@ -517,6 +517,13 @@ is("plain query gives the same key", core.normalizeQuery("Chomps Jalapeno Beef S
 // a venue row does -- it loses to any generic candidate, but still wins if it
 // is the only one left.
 is("branded row is penalised", core.genericnessRank("hamburger", "WENDY\u2019S, Jr. Hamburger, with cheese") >= 100, true);
+// A NAMED BRAND must outrank a generic venue category, not tie with it. Both
+// were 100 and "hamburger" STILL resolved to Wendy's after the brand penalty
+// shipped: USDA has no generic hamburger row, so every survivor was penalised
+// and the extra-word tie-break preferred the more specific brand.
+is("brand is worse than venue",
+   core.genericnessRank("hamburger", "WENDY\u2019S, Jr. Hamburger, with cheese")
+   > core.genericnessRank("hamburger", "Fast foods, hamburger; single, regular patty; plain"), true);
 is("generic row is not", core.genericnessRank("hamburger", "Hamburger, single patty, plain") < 100, true);
 is("naming the brand removes the penalty", core.genericnessRank("wendys hamburger", "WENDY\u2019S, Jr. Hamburger, with cheese") < 100, true);
 

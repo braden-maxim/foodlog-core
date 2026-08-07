@@ -324,6 +324,9 @@ export const FORM_QUALIFIERS = [
   // are still baked beans, and almond milk really is plant based, so both
   // would reject good matches.
   "meatless", "imitation", "substitute", "substitutes", "analog", "analogue", "vegan",
+  // Nobody querying beef wants a junior-stage puree. "8 oz of beef meat"
+  // resolved to "Babyfood, meat, beef, junior" at 81 kcal/100g against ~250.
+  "babyfood", "babyfoods",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.
@@ -558,6 +561,65 @@ export function energyKcal(nutrients) {
   // only trust id 1008 here, never 1062, and never an unlabelled value.
   const byId = energy.find((n) => n.nutrientId === 1008 && Number(n.value) > 0 && !unitOf(n));
   return byId ? Number(byId.value) : null;
+}
+
+/* WHOLE-FOOD CALORIE FLOORS -- the one bad-data class no word guard can see.
+ *
+ * These rows are not mismatches. The name is accurate, the macros reconcile
+ * against 4/4/9, and every text guard passes them. The published numbers are
+ * simply wrong, roughly halved, and they come from USDA rather than from
+ * anything we cached. Four found live 2026-08-07:
+ *
+ *   GRILLED SALMON               103 kcal/100g   real ~200
+ *   SHREDDED CHICKEN BREAST MEAT  83             real ~165
+ *   Babyfood, meat, beef, junior  81             real ~250
+ *
+ * Every pattern is case-INSENSITIVE. The first cut was not, and it missed
+ * GRILLED SALMON and SHREDDED CHICKEN BREAST MEAT while catching the lowercase
+ * babyfood row -- and all-caps is precisely the shape these bad rows come in.
+ *
+ * Deliberately conservative, because a wrongly rejected row costs more than
+ * the pollution it prevents -- the athlete gets no reference at all. Each
+ * floor is set BELOW the leanest legitimate form of that food, and the
+ * counter-example that set it is named. Only whole muscle foods are listed:
+ * anything composite varies too much to floor.
+ */
+export const WHOLE_FOOD_KCAL_FLOOR = [
+  // Smoked salmon (lox) is the leanest real salmon at ~117, so 110 clears it
+  // while still catching 103.
+  { re: /\bsalmon\b/i, min: 110, label: "salmon" },
+  // Raw skinless chicken breast is ~120; deli/rotisserie forms are lower but
+  // those are rejected as FORM_QUALIFIERS before they reach here.
+  { re: /\bchicken\b/i, min: 90, label: "chicken" },
+  // Raw turkey breast is ~111.
+  { re: /\bturkey\b/i, min: 85, label: "turkey" },
+  // 95% lean raw ground beef is ~137; eye of round ~130.
+  { re: /\b(beef|steak|sirloin|ribeye)\b/i, min: 105, label: "beef" },
+  { re: /\bpork\b/i, min: 100, label: "pork" },
+];
+
+// Words that mean the row is DILUTED or a composite, where a low density is
+// honest. A chicken soup at 40 kcal/100g is correct; flooring it would be the
+// false rejection this whole guard is trying not to make.
+const DILUTE_RE = /\b(soup|broth|stock|bouillon|consomme|juice|water|drink|beverage|smoothie|shake|sauce|gravy|dressing|marinade|brine|salad|stew|chowder|bisque)\b/i;
+
+/** True when a row claims a calorie density no real form of that food reaches.
+ *  Grams only -- an oz/ml/serving row cannot be assessed this way, the same
+ *  restriction isDryGrainEntry carries and for the same reason. */
+export function implausiblyLowForFood(row) {
+  if (!row || !row.name) return false;
+  const name = String(row.name);
+  if (DILUTE_RE.test(name)) return false;
+
+  const unit = String(row.serving_unit || "g").toLowerCase();
+  if (!["g", "gram", "grams"].includes(unit)) return false;
+  const size = Number(row.serving_size);
+  const cal = Number(row.calories);
+  if (!cal || !size || size <= 0) return false;
+
+  const per100 = (cal / size) * 100;
+  const rule = WHOLE_FOOD_KCAL_FLOOR.find((r) => r.re.test(name));
+  return !!rule && per100 < rule.min;
 }
 
 // Where a food was prepared or served, as opposed to what it is. USDA's SR

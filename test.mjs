@@ -550,5 +550,36 @@ is("vegetarian baked beans are baked beans", core.isOverlySpecific("baked beans"
 is("almond milk really is plant based", core.isOverlySpecific("almond milk", "Beverages, almond milk, plant based, unsweetened"), false);
 is("roast chicken still matches", core.isOverlySpecific("grilled chicken", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), false);
 
+// --- implausibly low calorie density ----------------------------------------
+// The one bad-data class no word guard can see: the name is accurate, the
+// macros reconcile against 4/4/9, every text guard passes, and the published
+// numbers are simply about half of reality. All from USDA, not the cache.
+const at100 = (name, calories) => ({ name, calories, serving_size: 100, serving_unit: "g" });
+is("grilled salmon at 103", core.implausiblyLowForFood(at100("GRILLED SALMON", 103)), true);
+is("shredded chicken at 83", core.implausiblyLowForFood(at100("SHREDDED CHICKEN BREAST MEAT", 83)), true);
+is("babyfood beef at 81", core.implausiblyLowForFood(at100("Babyfood, meat, beef, junior", 81)), true);
+// Case-insensitive on purpose. The first cut was not, and it missed both
+// all-caps rows above while catching the lowercase one -- and all-caps is
+// exactly the shape these rows come in.
+is("lowercase form is caught too", core.implausiblyLowForFood(at100("grilled salmon fillet", 103)), true);
+
+// Every floor sits BELOW the leanest legitimate form. These must all survive.
+is("lox is real salmon", core.implausiblyLowForFood(at100("Salmon, smoked (lox)", 117)), false);
+is("raw chicken breast survives", core.implausiblyLowForFood(at100("Chicken, broilers, breast, meat only, raw", 120)), false);
+is("raw turkey breast survives", core.implausiblyLowForFood(at100("Turkey, breast, meat only, raw", 111)), false);
+is("95% lean beef survives", core.implausiblyLowForFood(at100("Beef, ground, 95% lean, raw", 137)), false);
+// Diluted and composite foods are exempt -- a low density is honest there, and
+// flooring them would be the false rejection this guard exists to avoid.
+is("chicken soup is meant to be dilute", core.implausiblyLowForFood(at100("Soup, chicken noodle, canned", 40)), false);
+is("broth even more so", core.implausiblyLowForFood(at100("Chicken broth", 7)), false);
+is("chicken salad is composite", core.implausiblyLowForFood(at100("Chicken salad", 50)), false);
+// Unlisted foods are never floored -- shrimp really is ~71.
+is("shrimp is not in the table", core.implausiblyLowForFood(at100("Shrimp, raw", 71)), false);
+// Non-gram servings cannot be assessed, same restriction isDryGrainEntry has.
+is("oz rows are skipped", core.implausiblyLowForFood({ name: "GRILLED SALMON", calories: 103, serving_size: 4, serving_unit: "oz" }), false);
+
+// Nobody querying beef wants a junior-stage puree.
+is("babyfood is a form", core.isOverlySpecific("beef meat", "Babyfood, meat, beef, junior"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

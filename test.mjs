@@ -609,5 +609,39 @@ is("oz rows are skipped", core.implausiblyLowForFood({ name: "GRILLED SALMON", c
 // Nobody querying beef wants a junior-stage puree.
 is("babyfood is a form", core.isOverlySpecific("beef meat", "Babyfood, meat, beef, junior"), true);
 
+// --- composition percentages ------------------------------------------------
+// Reported 2026-08-09: lean percentages on ground meat were not being
+// recognised. They were destroyed twice -- normalizeQuery stripped them, and
+// the tokenizer's length filter would have dropped the bare number anyway.
+//
+// The cache-key collision is the worse half: "1% milk" and "2% milk" both
+// normalised to "% milk" and SHARED ONE ROW, so whichever was looked up first
+// fed both.
+is("percent survives the cache key", core.normalizeQuery("2% milk"), "2pct milk");
+is("and 1% is a different key", core.normalizeQuery("1% milk"), "1pct milk");
+is("lean percent survives", core.normalizeQuery("85% lean ground beef"), "85pct lean ground beef");
+// A lean RATIO is the same fact written differently -- but only when the parts
+// sum to about 100, which is what separates it from a date or a fraction.
+is("lean ratio expands", core.normalizeQuery("85/15 ground beef"), "85pct 15pct ground beef");
+// A ratio that is not a lean split must NOT become a composition token. (The
+// bare numbers are still stripped by the existing standalone-number rule --
+// that is pre-existing and not what this asserts.)
+is("a non-100 ratio is not a composition", /pct/.test(core.normalizeQuery("beef 3/4")), false);
+is("nor is a date-like pair", /pct/.test(core.normalizeQuery("chicken 1/2 breast")), false);
+
+// A stated composition must match a stated composition. Both of these scored
+// at or above MIN_SCORE and had multi-segment names, so the comma bypass let
+// them through before this.
+is("85% must not match 73%", core.isOverlySpecific("85% lean ground beef", "Beef, ground, 73% lean meat / 27% fat, raw"), true);
+is("85% matches 85%", core.isOverlySpecific("85% lean ground beef", "Beef, ground, 85% lean meat / 15% fat, raw"), false);
+is("the ratio form matches too", core.isOverlySpecific("85/15 ground beef", "Beef, ground, 85% lean meat / 15% fat, raw"), false);
+is("2% must not match 1%", core.isOverlySpecific("2% milk", "Milk, lowfat, fluid, 1% milkfat"), true);
+// Only when BOTH sides state one -- a plain query is left to the tie-break.
+is("a plain query is not blocked", core.isOverlySpecific("ground beef", "Beef, ground, 85% lean meat / 15% fat, raw"), false);
+// The pct marker must survive the digit/letter splitter, which is what breaks
+// "12oz" into "12 oz" -- without a guard it split "85pct" into "85" and "pct",
+// making every percentage the identical token and every comparison a match.
+is("count compounds still split", core.isOverlySpecific("chicken nuggets 8piece", "Chicken Nuggets (8ct)"), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

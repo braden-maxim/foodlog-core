@@ -24,6 +24,34 @@ import { BRAND_KEYWORDS } from "./brands.js";
 // key, which they should always have shared.
 const foldAccents = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+/* COMPOSITION PERCENTAGES survive as words, everywhere.
+ *
+ * A percentage in a food query is never a quantity -- it is what the food IS.
+ * "2% milk", "85% lean ground beef", "70% dark chocolate". They were being
+ * destroyed twice over:
+ *
+ *   normalizeQuery stripped them, so "1% milk" and "2% milk" both collapsed to
+ *   "% milk" and SHARED ONE CACHE ROW -- whichever was looked up first fed
+ *   both. Found 2026-08-09 while investigating ground beef.
+ *
+ *   The tokenizer then dropped what was left: "%" becomes a space and the bare
+ *   "85" is two characters, under the length filter every scorer applies. So
+ *   even preserved, a percentage could never be content on either side.
+ *
+ * Rewriting to "85pct" fixes both -- a token long enough to survive, produced
+ * identically from the query and from USDA's own "Beef, ground, 85% lean meat
+ * / 15% fat, raw", so for once the two sides agree.
+ *
+ * Lean RATIOS ("85/15", "93/7") are the same fact written differently, and
+ * only when the parts sum to about 100 -- that is what separates a lean ratio
+ * from a date, a fraction or a serving range. */
+export function expandPercents(s) {
+  return String(s)
+    .replace(/(\d{1,3})\s*\/\s*(\d{1,3})(?!\d)/g, (m, a, b) =>
+      Math.abs(Number(a) + Number(b) - 100) <= 2 ? `${a}pct ${b}pct` : m)
+    .replace(/(\d{1,3}(?:\.\d+)?)\s*%/g, "$1pct");
+}
+
 
 // Every unit word normalizeQuery() strips (both the weight-measurement regex
 // and the container/unit regex below) needs a matching entry here too, or
@@ -181,11 +209,10 @@ export function brandedSizeMismatch(query, cachedRow) {
 }
 
 export function normalizeQuery(q) {
-  return foldAccents(q)
+  return expandPercents(foldAccents(q))
     .toLowerCase()
     .trim()
     .replace(/\b\d+(\.\d+)?\s*(g|oz|lb|lbs|gram|grams|ounce|ounces|pound|pounds|ml|kg|mg|l|liter|liters|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons)\b/g, "") // strip weights/measurements
-    .replace(/\b\d+(\.\d+)?%\b/g, "") // strip percentages
     .replace(/\b\d+\b/g, "")          // strip standalone numbers
     .replace(/\b(cup|cups|tub|tubs|jar|jars|container|bag|box|pack|bottle|can|cans|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons|slice|slices|piece|pieces|strip|strips|serving|servings)\b/g, "") // strip containers/units
     .replace(/\s+/g, " ")
@@ -205,7 +232,7 @@ export function normalizeQuery(q) {
 // Rare enough in food queries to be worth the trade.
 // Reject results that don't meaningfully match the query — prevents e.g. "Pizza Hut" matching "kirkland cheese pizza"
 export function relevanceScore(query, resultName) {
-  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ");
+  const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ");
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   if (!qWords.length) return 1;
   const rNorm = norm(resultName);
@@ -419,7 +446,7 @@ const DISH_ALIASES = {
 const dishFamily = (w) => DISH_FAMILY[w] || w;
 
 export function isOverlySpecific(query, resultName) {
-  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
+  const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   // A parenthetical in a USDA name is a CROSS-REFERENCE, not the food: "Crackers,
   // saltines (includes oyster, soda, soup)" is a saltine, and the canonical one.
   // Reading "soup" out of that bracket rejected it and left a plain "saltine
@@ -433,6 +460,19 @@ export function isOverlySpecific(query, resultName) {
   // radius. Checked against the query's own words (not a fixed singular
   // form) so an explicit "egg whites" query still matches a "white"-named
   // entry — only disqualify when the query never mentioned the qualifier.
+  // A STATED COMPOSITION MUST MATCH A STATED COMPOSITION. "85% lean ground
+  // beef" against "Beef, ground, 73% lean meat / 27% fat, raw" scored 0.75 --
+  // exactly MIN_SCORE, so it passed -- and the 4-segment name then tripped the
+  // comma bypass before the extra-word count could look at it. Same for "2%
+  // milk" landing on 1% milkfat.
+  //
+  // Only fires when BOTH sides state one. A plain "milk" query is left alone,
+  // because choosing between whole and 2% for someone who did not say is the
+  // genericness tie-break's job, not a rejection.
+  const pcts = (words) => words.filter((w) => /^\d+(\.\d+)?pct$/.test(w));
+  const qPct = pcts(qWords), rPct = pcts(rWords);
+  if (qPct.length && rPct.length && !qPct.some((w) => rPct.includes(w))) return true;
+
   for (const base of qWords) {
     const qualifiers = SUBTYPE_QUALIFIERS[base];
     if (!qualifiers) continue;
@@ -510,7 +550,7 @@ export function firstSegmentMatches(query, resultName) {
   if (!resultName.includes(",")) return true;
   const segments = resultName.split(",");
   if (segments.length > 2) return true; // complex SR Legacy entry — trust relevance score
-  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
+  const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
   const firstSegment = norm(segments[0]);
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   return qWords.some((w) => firstSegment.includes(w));
@@ -670,7 +710,7 @@ const FAST_FOOD_RE = /\bfast\s+foods?\b/;
 // SR Legacy one adds 4, so ranking on word count alone picks the wrong row.
 // Venue has to outweigh it.
 export function genericnessRank(query, resultName) {
-  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
+  const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   const words = (s) => norm(s).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   const qWords = words(query);
   const rWords = words(resultName);
@@ -723,7 +763,7 @@ export function genericnessRank(query, resultName) {
  * which is correct for judging a user's typing and catastrophic against USDA
  * names -- "Salmon, Atlantic, farmed" would read as branded. */
 export function unrequestedVenueOrBrand(query, resultName) {
-  const norm = (s) => foldAccents(s).toLowerCase().replace(/['’.]/g, "").replace(/[-–—_]/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’.]/g, "").replace(/[-–—_]/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const qNorm = norm(query);
   const rNorm = norm(resultName);
 

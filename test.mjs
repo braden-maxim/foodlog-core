@@ -660,5 +660,44 @@ is("and lean ground beef does", core.firstSegmentMatches("85% lean ground beef",
 is("plain multi-segment query still bypasses", core.firstSegmentMatches("chicken breast", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), true);
 is("a plain milk query is unaffected", core.firstSegmentMatches("milk", "Milk, whole, 3.25% milkfat"), true);
 
+// --- composition tie-break, head food, additions --------------------------
+// All from the portal's USDA composition-spread probe, 2026-08-11.
+//
+// "beef patty" returns 16 variants that ALL score gen=6 -- every one states a
+// composition, so the tie fell to USDA's ordering, which lists the fattiest
+// first: 70/30 at 277 kcal against 93/7 at 193.
+const beefVariants = [
+  "Beef, ground, 70% lean meat / 30% fat, patty, cooked",
+  "Beef, ground, 80% lean meat / 20% fat, patty, cooked",
+  "Beef, ground, 85% lean meat / 15% fat, patty, cooked",
+  "Beef, ground, 90% lean meat / 10% fat, patty, cooked",
+  "Beef, ground, 95% lean meat / 5% fat, patty, cooked",
+];
+is("composition tie-break avoids the extreme", core.preferMedianComposition("beef patty", beefVariants), 2);
+// The same probe showed ground beef/turkey/pork are FINE, because USDA
+// publishes a composition-free row that genericnessRank already ranks clear.
+// So this must not fire there -- it is not a general "prefer lean" rule.
+is("leaves it alone when a plain row exists",
+   core.preferMedianComposition("ground beef", ["Beef, ground, unspecified fat content, cooked", ...beefVariants]), null);
+is("respects a stated composition", core.preferMedianComposition("93/7 beef patty", beefVariants), null);
+is("reads a stated composition", core.statedCompositionPct("Beef, ground, 85% lean meat / 15% fat"), 85);
+
+// "milk" reached "Cheese, mozzarella, whole milk" -- milk as a MODIFIER of a
+// different food -- because firstSegmentMatches exempts >2-segment names.
+// A penalty, not a rejection: the cut-of-meat case that exemption exists for
+// must still win when it is the only survivor.
+is("plain milk outranks mozzarella",
+   core.genericnessRank("milk", "Milk, buttermilk, fluid, whole") < core.genericnessRank("milk", "Cheese, mozzarella, whole milk"), true);
+is("a bar is a composite", core.isOverlySpecific("milk", "Milk and cereal bar"), true);
+
+// "cottage cheese" resolved to the vegetable variant because "with vegetables"
+// is FEWER words than "creamed, large or small curd". Additions are not
+// descriptors.
+is("plain cottage cheese outranks the vegetable one",
+   core.genericnessRank("cottage cheese", "Cheese, cottage, creamed, large or small curd")
+   < core.genericnessRank("cottage cheese", "Cheese, cottage, with vegetables"), true);
+is("asking for the addition costs nothing",
+   core.genericnessRank("cottage cheese with vegetables", "Cheese, cottage, with vegetables") === 0, true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

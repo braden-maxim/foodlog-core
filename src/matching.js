@@ -371,6 +371,9 @@ export const DISH_QUALIFIERS = [
   "salad", "sandwich", "wrap", "burger", "cheeseburger", "hamburger", "soup", "stew", "chowder",
   "bisque", "casserole", "pizza", "sushi", "roll", "rolls", "patty", "patties",
   "nugget", "nuggets", "tenders", "cake", "cakes", "pie", "dip",
+  // "milk" was resolving to "Milk and cereal bar" at 413 kcal (portal,
+  // 2026-08-11). A bar is a composite that CONTAINS the queried food.
+  "bar", "bars",
   // "tender" SINGULAR is not here, and the split is not a guess -- it is what
   // USDA's own naming does. Every dish-sense tender in the database is plural
   // ("Fast foods, chicken tenders", "Chicken breast tenders, breaded"); every
@@ -764,9 +767,36 @@ export function genericnessRank(query, resultName) {
   const rBrand = BRAND_KEYWORDS.find((b) => rNorm.replace(/[-–—_]/g, " ").includes(b));
   const brandPenalty = rBrand && !norm(query).replace(/[-–—_]/g, " ").includes(rBrand) ? 1000 : 0;
 
+  // HEAD-FOOD PENALTY. firstSegmentMatches waves through any name with more
+  // than two segments, because a cut-of-meat query legitimately has the animal
+  // in the first segment ("skirt steak" -> "Beef, plate steak, inside skirt").
+  // That same exemption lets "milk" reach "Cheese, mozzarella, whole milk",
+  // where milk is a MODIFIER of a different food. Both tie at 2 extra words,
+  // so USDA's ordering decides (portal, 2026-08-11).
+  //
+  // A penalty rather than a rejection, deliberately: the cut-of-meat case is
+  // real and must still win when it is the only survivor. This only decides
+  // which of several survivors is the more generic answer.
+  // ADDITIONS ARE NOT DESCRIPTORS. Extra-word count treats "with vegetables"
+  // as MORE generic than "creamed, large or small curd", because it is fewer
+  // words -- so "cottage cheese" resolved to the vegetable variant while plain
+  // sat below it (portal, 2026-08-11). Same brevity bias that put "Chicken,
+  // meatless" above the correct seven-word chicken row.
+  //
+  // Anything the query did not ask for that arrives after "with" or "and" is
+  // something ADDED to the food, so it makes the row less generic, not more.
+  // Scoped to extras, so a query that does ask for it pays nothing.
+  const addedTail = rNorm.split(/\b(?:with|and)\b/).slice(1).join(" ");
+  const addedWords = new Set(addedTail.split(" ").filter(Boolean));
+  const additions = rWords.filter((w) => !qWords.includes(w) && addedWords.has(w)).length;
+
+  const rSegs = String(resultName).split(",");
+  const headMismatch = rSegs.length > 1 && !qWords.some((w) => norm(rSegs[0]).includes(w));
+  const headPenalty = headMismatch ? 50 : 0;
+
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;
-  return brandPenalty + venuePenalty + extra;
+  return brandPenalty + venuePenalty + headPenalty + additions * 10 + extra;
 }
 
 /* A restaurant's version of a food, answering a query that never named the
@@ -798,4 +828,47 @@ export function unrequestedVenueOrBrand(query, resultName) {
   const isVenue = words(rNorm).some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(rNorm);
   const queryWantsVenue = words(qNorm).some((w) => VENUE_QUALIFIERS.includes(w)) || FAST_FOOD_RE.test(qNorm);
   return isVenue && !queryWantsVenue;
+}
+
+/* COMPOSITION TIE-BREAK.
+ *
+ * Portal data, 2026-08-11: "beef patty" returns 16 variants that ALL score
+ * gen=6, because every one states a composition and they differ only in the
+ * numbers. The tie falls to USDA's ordering, which happens to list the
+ * fattiest first -- 70/30 at 277 kcal/100g against 93/7 at 193. A 135
+ * kcal/100g spread decided by list position.
+ *
+ * The same probe showed ground beef, ground turkey and ground pork are all
+ * FINE, because USDA publishes a composition-free row for each ("Pork, fresh,
+ * ground, cooked") which genericnessRank already ranks well clear of the
+ * variants. So this is not a general "prefer lean" or "prefer middle" rule --
+ * both of those were wrong. It applies only where no composition-free
+ * candidate exists at all, which is the one case nothing else covers.
+ *
+ * The target is the MEDIAN of the candidates' own compositions, not a
+ * hardcoded number: it needs no per-food table, and it lands near the common
+ * retail grade without asserting one.
+ */
+export function statedCompositionPct(name) {
+  const m = expandPercents(String(name)).match(/(\d+(?:\.\d+)?)pct/);
+  return m ? Number(m[1]) : null;
+}
+
+/** Index of the candidate to prefer, or null when this does not apply.
+ *  `names` must be the surviving candidates, already ordered by the caller's
+ *  normal ranking, and is only consulted when they are otherwise tied. */
+export function preferMedianComposition(query, names) {
+  if (!Array.isArray(names) || names.length < 2) return null;
+  if (/(\d+(?:\.\d+)?)pct/.test(expandPercents(String(query)))) return null;  // user stated one
+  const pcts = names.map(statedCompositionPct);
+  if (pcts.some((p) => p == null)) return null;                                 // a composition-free row exists; let it win
+  const sorted = [...pcts].sort((a, b) => a - b);
+  const median = sorted.length % 2
+    ? sorted[(sorted.length - 1) / 2]
+    : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  let best = 0;
+  for (let i = 1; i < pcts.length; i++) {
+    if (Math.abs(pcts[i] - median) < Math.abs(pcts[best] - median)) best = i;
+  }
+  return best;
 }

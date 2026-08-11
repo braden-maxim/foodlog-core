@@ -727,6 +727,26 @@ is("but asking for goat gets goat", core.isOverlySpecific("goat cheese", "Cheese
 is("and asking for noodles gets noodles", core.isOverlySpecific("rice noodles", "Rice noodles, cooked"), false);
 is("plain rice is untouched", core.isOverlySpecific("rice", "Rice, white, long-grain, cooked"), false);
 
+// --- a different staple is a different food ---------------------------------
+// The portal's full distributions killed the plausibility-band idea with data:
+// cheese keeps rows spanning 253-466 with its two rejects at 295 and 408,
+// INSIDE that range, so no upper bound separates them. Milk and yogurt are
+// bimodal rather than bounded. 299 kcal is perfectly plausible FOR CHEESE --
+// "Cheese, mozzarella, whole milk" is not a bad milk, it is not a milk at all.
+is("milk is not mozzarella", core.isOverlySpecific("milk", "Cheese, mozzarella, whole milk"), true);
+is("cheese is not dry milk", core.isOverlySpecific("cheese", "Milk, dry, whole"), true);
+is("chicken is not turkey", core.isOverlySpecific("chicken", "Turkey, ground, raw"), true);
+// The head of a compound is its LAST word. Taking the first would call "Rice
+// milk" a rice -- and after the other guards cleared the pool, that 47 kcal
+// row was the ONLY survivor a plain "rice" query had left.
+is("rice milk is a milk", core.isOverlySpecific("rice", "Rice milk, unsweetened"), true);
+is("plain rice is untouched by it", core.isOverlySpecific("rice", "Rice, white, long-grain, cooked"), false);
+// Scoped to two RECOGNISED staples, which is what keeps the cut-of-meat
+// exemption alive: "skirt steak" names no base food, so the rule never runs.
+is("cut-of-meat queries still work", core.isOverlySpecific("skirt steak", "Beef, plate steak, inside skirt, choice, raw"), false);
+is("naming both staples keeps both", core.isOverlySpecific("cream cheese", "Cheese, cream"), false);
+is("plural heads still match", core.isOverlySpecific("eggs", "Egg, whole, cooked, hard-boiled"), false);
+
 // Median over any numeric axis, for ties with no composition to compare --
 // "cheese" returned 23 varieties all at rel 1.00 / gen 1, spanning 253-466
 // kcal, resolved purely by USDA's alphabetical order.

@@ -472,6 +472,47 @@ const DISH_ALIASES = {
 
 const dishFamily = (w) => DISH_FAMILY[w] || w;
 
+/* BASE FOODS — staples that are mutually exclusive as the HEAD of a name.
+ *
+ * The portal's distributions (2026-08-11) killed the plausibility-band idea
+ * with data: cheese keeps rows spanning 253-466 with its two rejects at 295
+ * and 408, INSIDE that range, so no upper bound separates them. Milk and
+ * yogurt are bimodal rather than bounded -- fluid milk at 47-62 then ricotta
+ * and mozzarella at 150-299 -- and the gap, not the ceiling, is the signal.
+ *
+ * Their conclusion is the right one: 299 kcal is perfectly plausible FOR
+ * CHEESE. "Cheese, mozzarella, whole milk" is not a bad milk, it is not a milk
+ * at all. The separating signal is the head food, which is already computed
+ * for the genericnessRank penalty -- it was just scoring 52 points where a tie
+ * could still surface it.
+ *
+ * Scoped so it can only fire between two RECOGNISED staples. That is what
+ * keeps the cut-of-meat exemption alive: "skirt steak" names no base food, so
+ * the rule never runs and "Beef, plate steak, inside skirt" still matches.
+ */
+export const BASE_FOODS = [
+  "milk", "cheese", "yogurt", "butter", "cream",
+  "bread", "rice", "egg", "eggs",
+  "chicken", "turkey", "beef", "pork",
+];
+
+// The head of a USDA name is its first comma segment ("Cheese, mozzarella,
+// whole milk" -> cheese). Without a comma it is the last word, which is where
+// English puts the head of a compound: "Rice milk" is a milk, not a rice.
+function headFoodOf(resultName, norm) {
+  const n = String(resultName);
+  const seg = n.includes(",") ? n.split(",")[0] : n;
+  const words = norm(seg).split(" ").filter(Boolean);
+  if (!words.length) return null;
+  // The LAST staple in the head segment, not the first: "Rice milk" is a milk,
+  // and taking the first would have called it a rice and kept it for a rice
+  // query -- which is the row that was left when everything else had been
+  // rejected. Comma or no comma, the head of an English compound is last.
+  const bases = words.filter((w) => BASE_FOODS.includes(w));
+  if (bases.length) return bases[bases.length - 1];
+  return null;
+}
+
 export function isOverlySpecific(query, resultName) {
   const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2").replace(/\s+/g, " ").trim();
   // A parenthetical in a USDA name is a CROSS-REFERENCE, not the food: "Crackers,
@@ -496,6 +537,17 @@ export function isOverlySpecific(query, resultName) {
   // Only fires when BOTH sides state one. A plain "milk" query is left alone,
   // because choosing between whole and 2% for someone who did not say is the
   // genericness tie-break's job, not a rejection.
+  // A DIFFERENT STAPLE IS A DIFFERENT FOOD, not a specific one. "milk" was
+  // reaching "Cheese, mozzarella, whole milk" and "rice" was left with nothing
+  // but "Rice milk" at 47 kcal once the other guards had cleared the pool.
+  const qBases = qWords.filter((w) => BASE_FOODS.includes(w));
+  if (qBases.length) {
+    const head = headFoodOf(resultName, norm);
+    if (head && !qBases.includes(head) &&
+        !(head.endsWith("s") && qBases.includes(head.slice(0, -1))) &&
+        !qBases.includes(head + "s")) return true;
+  }
+
   const pcts = (words) => words.filter((w) => /^\d+(\.\d+)?pct$/.test(w));
   const qPct = pcts(qWords), rPct = pcts(rWords);
   if (qPct.length && rPct.length && !qPct.some((w) => rPct.includes(w))) return true;

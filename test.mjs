@@ -643,5 +643,22 @@ is("a plain query is not blocked", core.isOverlySpecific("ground beef", "Beef, g
 // making every percentage the identical token and every comparison a match.
 is("count compounds still split", core.isOverlySpecific("chicken nuggets 8piece", "Chicken Nuggets (8ct)"), false);
 
+// --- composition queries must match the HEAD food -------------------------
+// Regression from the percentage tokens, caught by the portal 2026-08-11.
+// Both scored relevance 1.00 and passed every guard: the composition token
+// matched, and "milk" was satisfied by "milkfat" or by the phrase "prepared
+// with 2% milk". Four segments, so the >2-segment bypass returned accept
+// before the extra-word count could see them.
+is("1% milk is not cottage cheese", core.firstSegmentMatches("1% milk", "Cheese, cottage, lowfat, 1% milkfat"), false);
+is("2% milk is not egg custard", core.firstSegmentMatches("2% milk", "Egg custards, dry mix, prepared with 2% milk"), false);
+// Segment count cannot separate these -- the CORRECT row has four segments too.
+is("but real 2% milk still matches", core.firstSegmentMatches("2% milk", "Milk, reduced fat, fluid, 2% milkfat"), true);
+is("and real 1% milk does", core.firstSegmentMatches("1% milk", "Milk, lowfat, fluid, 1% milkfat"), true);
+is("and lean ground beef does", core.firstSegmentMatches("85% lean ground beef", "Beef, ground, 85% lean meat / 15% fat, raw"), true);
+// The bypass still applies when the query states NO composition, which is the
+// case it was written for.
+is("plain multi-segment query still bypasses", core.firstSegmentMatches("chicken breast", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), true);
+is("a plain milk query is unaffected", core.firstSegmentMatches("milk", "Milk, whole, 3.25% milkfat"), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

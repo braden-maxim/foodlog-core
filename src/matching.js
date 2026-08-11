@@ -549,10 +549,34 @@ export function isOverlySpecific(query, resultName) {
 export function firstSegmentMatches(query, resultName) {
   if (!resultName.includes(",")) return true;
   const segments = resultName.split(",");
-  if (segments.length > 2) return true; // complex SR Legacy entry — trust relevance score
   const norm = (s) => expandPercents(foldAccents(s)).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/(\d)(?!pct\b)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
   const firstSegment = norm(segments[0]);
   const qWords = norm(query).split(" ").filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+
+  // A COMPOSITION QUERY IS NOT EXEMPT FROM THE HEAD-FOOD CHECK.
+  //
+  // The >2-segment bypass exists because a complex SR Legacy name adds many
+  // legitimate words -- "Chicken, broilers or fryers, breast, meat only,
+  // cooked, roasted" -- and its first segment really is the food. It hands off
+  // to relevance, which is fine right up until relevance can be satisfied by
+  // the composition token alone.
+  //
+  // Regression introduced by percentage tokens (2fb8af7), reported by the
+  // portal 2026-08-11:
+  //   "1% milk" -> "Cheese, cottage, lowfat, 1% milkfat"        72 kcal
+  //   "2% milk" -> "Egg custards, dry mix, prepared with 2% milk" 112
+  // Both scored 1.00: "1pct" matched, and "milk" was satisfied by "milkfat"
+  // or by the phrase "prepared with 2% milk". Four segments, so the bypass
+  // returned accept before the extra-word count could see three or five extra
+  // words. That is the third distinct class of error this bypass has hidden.
+  //
+  // Segment count cannot separate these -- the CORRECT row, "Milk, reduced
+  // fat, fluid, 2% milkfat", also has four. The first segment can: Milk vs
+  // Cheese vs Egg custards. So when the user has stated a composition, which
+  // is the most specific they can be, the head food has to match.
+  const queryStatesComposition = qWords.some((w) => /^\d+(\.\d+)?pct$/.test(w));
+  if (segments.length > 2 && !queryStatesComposition) return true;
+
   return qWords.some((w) => firstSegment.includes(w));
 }
 

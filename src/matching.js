@@ -368,6 +368,10 @@ export const FORM_QUALIFIERS = [
   "heart", "hearts", "neck", "necks", "tripe", "tongue", "kidney", "kidneys",
   // A soy version of a dairy food is a substitute, same as the meat ones above.
   "tofu",
+  // SPECIES. A bare "milk" or "cheese" query means cow. "milk" was resolving
+  // to "Milk, sheep, fluid" at 108 kcal/100g against ~62 for cow. Symmetric as
+  // always, so "goat cheese" still gets goat cheese.
+  "sheep", "goat", "buffalo", "ewe",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.
@@ -399,7 +403,7 @@ export const DISH_QUALIFIERS = [
   // It stays in DISH_ALIASES, so a query typing "chicken tender" still counts
   // as naming the dish -- only the RESULT side stops being disqualified.
   "bowl", "platter", "taco", "tacos", "burrito", "quesadilla", "melt", "sub",
-  "curry", "lasagna", "lasagne", "pasta", "smoothie", "shake", "jerky",
+  "curry", "lasagna", "lasagne", "pasta", "noodle", "noodles", "smoothie", "shake", "jerky",
   "sausage", "meatball", "meatballs", "loaf", "pate", "mousse", "souffle",
   "quiche", "omelet", "omelette", "frittata", "hash", "pilaf", "risotto",
   "paella", "gumbo", "jambalaya", "stirfry", "fritter", "croquette",

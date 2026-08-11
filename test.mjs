@@ -719,6 +719,14 @@ is("asking for dried gets dried", core.isOverlySpecific("dried cherries", "Cherr
 is("saltines survive crackers being a dish", core.isOverlySpecific("saltine crackers", "Crackers, saltines (includes oyster, soda, soup)"), false);
 is("so do sandwich crackers", core.isOverlySpecific("ritz peanut butter crackers", "Crackers, wheat, sandwich, with peanut butter filling"), false);
 
+// Second pass on the same probe: fixing the first winner exposed the next.
+is("rice is not rice noodles", core.isOverlySpecific("rice", "Rice noodles, cooked"), true);
+is("milk means cow", core.isOverlySpecific("milk", "Milk, sheep, fluid"), true);
+is("cheese means cow too", core.isOverlySpecific("cheese", "Cheese, goat, hard type"), true);
+is("but asking for goat gets goat", core.isOverlySpecific("goat cheese", "Cheese, goat, hard type"), false);
+is("and asking for noodles gets noodles", core.isOverlySpecific("rice noodles", "Rice noodles, cooked"), false);
+is("plain rice is untouched", core.isOverlySpecific("rice", "Rice, white, long-grain, cooked"), false);
+
 // Median over any numeric axis, for ties with no composition to compare --
 // "cheese" returned 23 varieties all at rel 1.00 / gen 1, spanning 253-466
 // kcal, resolved purely by USDA's alphabetical order.

@@ -359,6 +359,15 @@ export const FORM_QUALIFIERS = [
   // different product, not a description of the same one. (These are
   // deliberately absent from STOP_WORDS for the same reason.)
   "dried", "dehydrated", "condensed", "evaporated",
+  // CURED DELI PRODUCTS. "beef" was resolving to "Beef, cured, pastrami" (147)
+  // ahead of actual cuts once the window widened.
+  //
+  // The word "cured" itself is deliberately NOT here, and that is the whole
+  // design of this entry: "Pork, cured, bacon, cooked" is THE canonical bacon
+  // row, so a blanket cured rule would break every bacon lookup. Naming the
+  // products instead is narrower and cannot misfire that way.
+  "pastrami", "corned", "salami", "bologna", "pepperoni", "prosciutto",
+  "mortadella", "backfat", "lard", "suet", "tallow",
   // ORGAN MEATS AND PARTS. "chicken" was resolving to "Chicken, feet, boiled"
   // -- and NOT as a tie: feet scored gen=1 against ground chicken's gen=2,
   // because "feet" is one short word and brevity still reads as generality.
@@ -869,13 +878,25 @@ export function genericnessRank(query, resultName) {
   const addedWords = new Set(addedTail.split(" ").filter(Boolean));
   const additions = rWords.filter((w) => !qWords.includes(w) && addedWords.has(w)).length;
 
+  // A STAPLE THE QUERY NEVER NAMED, NOT IN HEAD POSITION, IS AN INGREDIENT.
+  // "bread" resolves to "Bread, cheese" (408) against a kept median of 274 --
+  // bread IS the head, so the head-food rejection correctly does not fire, but
+  // cheese is not describing the bread, it is in it.
+  //
+  // A penalty and not a rejection: "Cheese, mozzarella, whole milk" names milk
+  // the same way while genuinely being cheese, and for a CHEESE query that row
+  // should merely rank low, not vanish.
+  const rBases = rWords.filter((w) => BASE_FOODS.includes(w) && !qWords.includes(w));
+  const headBase = headFoodOf(resultName, norm);
+  const addedStaples = rBases.filter((w) => w !== headBase).length;
+
   const rSegs = String(resultName).split(",");
   const headMismatch = rSegs.length > 1 && !qWords.some((w) => norm(rSegs[0]).includes(w));
   const headPenalty = headMismatch ? 50 : 0;
 
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;
-  return brandPenalty + venuePenalty + headPenalty + additions * 10 + extra;
+  return brandPenalty + venuePenalty + headPenalty + addedStaples * 20 + additions * 10 + extra;
 }
 
 /* A restaurant's version of a food, answering a query that never named the

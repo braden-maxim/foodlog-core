@@ -747,6 +747,25 @@ is("cut-of-meat queries still work", core.isOverlySpecific("skirt steak", "Beef,
 is("naming both staples keeps both", core.isOverlySpecific("cream cheese", "Cheese, cream"), false);
 is("plural heads still match", core.isOverlySpecific("eggs", "Egg, whole, cooked, hard-boiled"), false);
 
+// --- from the pageSize=50 re-run ------------------------------------------
+// "beef" started returning "Beef, cured, pastrami" (147) ahead of actual cuts
+// once the window widened. The word "cured" is deliberately NOT a form
+// qualifier: "Pork, cured, bacon, cooked" is THE canonical bacon row, so a
+// blanket rule would break every bacon lookup. The products are named instead.
+is("beef is not pastrami", core.isOverlySpecific("beef", "Beef, cured, pastrami"), true);
+is("asking for pastrami gets it", core.isOverlySpecific("pastrami", "Beef, cured, pastrami"), false);
+is("bacon still resolves", core.isOverlySpecific("bacon", "Pork, cured, bacon, cooked"), false);
+
+// "bread" resolves to "Bread, cheese" (408) against a kept median of 274.
+// Bread IS the head, so the head-food rejection correctly does not fire --
+// cheese is not describing the bread, it is in it.
+is("cheese bread ranks below plain bread",
+   core.genericnessRank("bread", "Bread, whole-wheat, commercially prepared")
+   < core.genericnessRank("bread", "Bread, cheese"), true);
+// A penalty and not a rejection: mozzarella names milk the same way while
+// genuinely being cheese, and for a CHEESE query it should rank low, not vanish.
+is("mozzarella survives a cheese query", core.isOverlySpecific("cheese", "Cheese, mozzarella, whole milk"), false);
+
 // Median over any numeric axis, for ties with no composition to compare --
 // "cheese" returned 23 varieties all at rel 1.00 / gen 1, spanning 253-466
 // kcal, resolved purely by USDA's alphabetical order.

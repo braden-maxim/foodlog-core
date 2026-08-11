@@ -699,5 +699,33 @@ is("plain cottage cheese outranks the vegetable one",
 is("asking for the addition costs nothing",
    core.genericnessRank("cottage cheese with vegetables", "Cheese, cottage, with vegetables") === 0, true);
 
+// --- from the portal's extended probe, 2026-08-11 ---------------------------
+// Every plain-food query returned a wrong winner. Three were not ties at all:
+// the ranking actively preferred the wrong food, because "feet", "tofu" and
+// "dried" are each one short word and brevity still reads as generality.
+is("chicken is not chicken feet", core.isOverlySpecific("chicken", "Chicken, feet, boiled"), true);
+is("yogurt is not tofu yogurt", core.isOverlySpecific("yogurt", "Tofu yogurt"), true);
+is("milk is not dried buttermilk", core.isOverlySpecific("milk", "Milk, buttermilk, dried"), true);
+is("rice is not rice crackers", core.isOverlySpecific("rice", "Rice crackers"), true);
+// The rows those were beating must still pass.
+is("ground chicken still matches", core.isOverlySpecific("chicken", "Chicken, ground, raw"), false);
+is("plain yogurt still matches", core.isOverlySpecific("yogurt", "Yogurt, plain, nonfat"), false);
+is("fluid milk still matches", core.isOverlySpecific("milk", "Milk, whole, 3.25% milkfat"), false);
+// Asking for the organ/state gets it -- these are symmetric.
+is("asking for liver gets liver", core.isOverlySpecific("chicken liver", "Chicken, liver, cooked"), false);
+is("asking for dried gets dried", core.isOverlySpecific("dried cherries", "Cherries, sweet, dried"), false);
+// "crackers" became a dish word, so the cracker/cookie aliases now name TWO
+// families -- otherwise the saltine and Ritz matches would have broken.
+is("saltines survive crackers being a dish", core.isOverlySpecific("saltine crackers", "Crackers, saltines (includes oyster, soda, soup)"), false);
+is("so do sandwich crackers", core.isOverlySpecific("ritz peanut butter crackers", "Crackers, wheat, sandwich, with peanut butter filling"), false);
+
+// Median over any numeric axis, for ties with no composition to compare --
+// "cheese" returned 23 varieties all at rel 1.00 / gen 1, spanning 253-466
+// kcal, resolved purely by USDA's alphabetical order.
+is("median picks the middle of a spread", core.preferMedianValue([100, 200, 900]), 1);
+is("two values give no signal", core.preferMedianValue([416, 130]), null);
+is("no spread gives no signal", core.preferMedianValue([200, 200, 200]), null);
+is("a missing value disables it", core.preferMedianValue([100, null, 300]), null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

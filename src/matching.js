@@ -354,6 +354,20 @@ export const FORM_QUALIFIERS = [
   // Nobody querying beef wants a junior-stage puree. "8 oz of beef meat"
   // resolved to "Babyfood, meat, beef, junior" at 81 kcal/100g against ~250.
   "babyfood", "babyfoods",
+  // CONCENTRATED STATES. "milk" was resolving to "Milk, buttermilk, dried" at
+  // 387 kcal/100g against ~62 for fluid. Removing the water makes it a
+  // different product, not a description of the same one. (These are
+  // deliberately absent from STOP_WORDS for the same reason.)
+  "dried", "dehydrated", "condensed", "evaporated",
+  // ORGAN MEATS AND PARTS. "chicken" was resolving to "Chicken, feet, boiled"
+  // -- and NOT as a tie: feet scored gen=1 against ground chicken's gen=2,
+  // because "feet" is one short word and brevity still reads as generality.
+  // "skin" is deliberately NOT here: "meat and skin" is standard USDA phrasing
+  // for ordinary chicken and rejecting it would cost good matches.
+  "feet", "foot", "giblets", "liver", "livers", "gizzard", "gizzards",
+  "heart", "hearts", "neck", "necks", "tripe", "tongue", "kidney", "kidneys",
+  // A soy version of a dairy food is a substitute, same as the meat ones above.
+  "tofu",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.
@@ -373,7 +387,7 @@ export const DISH_QUALIFIERS = [
   "nugget", "nuggets", "tenders", "cake", "cakes", "pie", "dip",
   // "milk" was resolving to "Milk and cereal bar" at 413 kcal (portal,
   // 2026-08-11). A bar is a composite that CONTAINS the queried food.
-  "bar", "bars",
+  "bar", "bars", "cracker", "crackers", "cookie", "cookies",
   // "tender" SINGULAR is not here, and the split is not a guess -- it is what
   // USDA's own naming does. Every dish-sense tender in the database is plural
   // ("Fast foods, chicken tenders", "Chicken breast tenders, breaded"); every
@@ -420,6 +434,8 @@ const DISH_FAMILY = {
   tender: "tender", tenders: "tender",
   meatball: "meatball", meatballs: "meatball",
   cake: "cake", cakes: "cake",
+  cracker: "cracker", crackers: "cracker",
+  cookie: "cookie", cookies: "cookie",
   lasagna: "lasagna", lasagne: "lasagna",
   omelet: "omelet", omelette: "omelet",
   taco: "taco", tacos: "taco",
@@ -442,8 +458,12 @@ const DISH_ALIASES = {
   // the rejection cost real coverage: the same guard runs on the fresh USDA
   // result, so the query fell through to an unaided estimate.
   tender: "tender",
-  cracker: "sandwich", crackers: "sandwich",
-  cookie: "sandwich", cookies: "sandwich",
+  // Arrays: a cracker query names BOTH the cracker family and the sandwich
+  // family, because "Crackers, wheat, sandwich, with peanut butter filling"
+  // uses sandwich as the shape. Needed once "crackers" itself became a dish
+  // word -- "rice" was resolving to "Rice crackers" at 416 kcal/100g.
+  cracker: ["cracker", "sandwich"], crackers: ["cracker", "sandwich"],
+  cookie: ["cookie", "sandwich"], cookies: ["cookie", "sandwich"],
 };
 
 const dishFamily = (w) => DISH_FAMILY[w] || w;
@@ -534,7 +554,10 @@ export function isOverlySpecific(query, resultName) {
   // was answering with "Beef, ground, patties, frozen, cooked, broiled".
   const queryDishes = new Set(
     qWords.filter((w) => DISH_QUALIFIERS.includes(w) || DISH_ALIASES[w])
-          .map((w) => DISH_ALIASES[w] || dishFamily(w))
+          .flatMap((w) => {
+            const a = DISH_ALIASES[w];
+            return a ? (Array.isArray(a) ? a : [a]) : [dishFamily(w)];
+          })
   );
   const resultDishes = extra.filter((w) => DISH_QUALIFIERS.includes(w)).map(dishFamily);
   if (resultDishes.some((f) => !queryDishes.has(f))) return true;
@@ -869,6 +892,26 @@ export function preferMedianComposition(query, names) {
   let best = 0;
   for (let i = 1; i < pcts.length; i++) {
     if (Math.abs(pcts[i] - median) < Math.abs(pcts[best] - median)) best = i;
+  }
+  return best;
+}
+
+/** Index of the value closest to the set's median, or null when the set gives
+ *  no usable signal. Needs THREE values: with two, the median sits exactly
+ *  between them and both are equidistant, so it would silently fall back to
+ *  whichever came first -- which is the arbitrary ordering this exists to
+ *  escape. */
+export function preferMedianValue(values) {
+  if (!Array.isArray(values) || values.length < 3) return null;
+  if (values.some((v) => typeof v !== "number" || !isFinite(v))) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = sorted.length % 2
+    ? sorted[(sorted.length - 1) / 2]
+    : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  if (sorted[0] === sorted[sorted.length - 1]) return null;   // no spread, nothing to choose
+  let best = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (Math.abs(values[i] - median) < Math.abs(values[best] - median)) best = i;
   }
   return best;
 }

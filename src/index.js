@@ -32,4 +32,4 @@ export { dayConfidence, weightedIntake, dayShape, parseClockMinutes,
   RECONSTRUCTED_DAY_WEIGHT, UNTIMED_DAY_WEIGHT } from "./logQuality.js";
 export { scanBarcodeFromFile } from "./scan.js";
 export { buildPhotoPrompt, buildLabelPrompt } from "./photoPrompts.js";
-export { buildUsdaResult, lookupBarcodeOFF, lookupBarcodeUSDA } from "./sources.js";
+export { selectBestFood, buildUsdaResult, lookupBarcodeOFF, lookupBarcodeUSDA } from "./sources.js";

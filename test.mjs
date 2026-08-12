@@ -772,6 +772,19 @@ is("cheese bread ranks below plain bread",
 // genuinely being cheese, and for a CHEESE query it should rank low, not vanish.
 is("mozzarella survives a cheese query", core.isOverlySpecific("cheese", "Cheese, mozzarella, whole milk"), false);
 
+// Frozen yogurt is a dessert, not cold yogurt. It heads with "yogurt", so no
+// head-food rule reaches it, and it ties with "Yogurt, Greek, plain, nonfat"
+// on word count -- so it wins on index. Needed once the null-energy filter
+// let it into the pool at all.
+is("yogurt is not frozen yogurt", core.isOverlySpecific("yogurt", "Frozen yogurts, chocolate"), true);
+is("asking for frozen yogurt gets it", core.isOverlySpecific("frozen yogurt", "Frozen yogurts, chocolate"), false);
+is("plain yogurt is untouched", core.isOverlySpecific("yogurt", "Yogurt, Greek, plain, nonfat"), false);
+// "frozen" is a STOP WORD -- it has to be, so "frozen blueberries" still
+// matches a plain blueberry row -- so subtype qualifiers now read the raw
+// text rather than the stop-word-filtered words.
+is("frozen still neutral elsewhere", core.isOverlySpecific("frozen blueberries", "Blueberries, raw"), false);
+is("and in the other direction", core.isOverlySpecific("blueberries", "Blueberries, frozen, unsweetened"), false);
+
 // Median over any numeric axis, for ties with no composition to compare --
 // "cheese" returned 23 varieties all at rel 1.00 / gen 1, spanning 253-466
 // kcal, resolved purely by USDA's alphabetical order.

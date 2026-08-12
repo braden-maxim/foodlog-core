@@ -296,6 +296,13 @@ export const SUBTYPE_QUALIFIERS = {
   // for conventional 80/20, and the 4-segment name tripped the comma bypass
   // before the extra-word count could see it. Live 2026-08-07.
   beef: ["grass", "fed"],
+  // Frozen yogurt is a dessert, not cold yogurt. Needed once the null-energy
+  // filter let it into the pool: it heads with "yogurt", so no head-food rule
+  // reaches it, and it ties with "Yogurt, Greek, plain, nonfat" on word count.
+  // "frozen" is a STOP WORD, which is why the loop above had to start reading
+  // the raw text.
+  yogurt: ["frozen"],
+  yogurts: ["frozen"],
 };
 
 // relevanceScore alone treats a short/generic query as 100% relevant against any
@@ -561,11 +568,18 @@ export function isOverlySpecific(query, resultName) {
   const qPct = pcts(qWords), rPct = pcts(rWords);
   if (qPct.length && rPct.length && !qPct.some((w) => rPct.includes(w))) return true;
 
+  // Checked against the RAW normalised text, not the stop-word-filtered words.
+  // A subtype qualifier can itself be a stop word -- "frozen" is one, because
+  // queries saying "frozen blueberries" must still match a plain blueberry row
+  // -- and filtering it out first made the qualifier unreachable. No existing
+  // entry is a stop word, so this changes nothing for them.
+  const qAll = norm(query).split(" ").filter(Boolean);
+  const rAll = norm(stripParens(resultName)).split(" ").filter(Boolean);
   for (const base of qWords) {
     const qualifiers = SUBTYPE_QUALIFIERS[base];
     if (!qualifiers) continue;
-    const queryMentionsQualifier = qualifiers.some((w) => qWords.includes(w));
-    if (!queryMentionsQualifier && rWords.some((w) => qualifiers.includes(w))) return true;
+    const queryMentionsQualifier = qualifiers.some((w) => qAll.includes(w));
+    if (!queryMentionsQualifier && rAll.some((w) => qualifiers.includes(w))) return true;
   }
   // Checked BEFORE the comma bypass, for the same reason the subtype list is:
   // the names this catches are exactly the multi-segment ones the bypass

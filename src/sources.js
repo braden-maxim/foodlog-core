@@ -49,7 +49,11 @@ export function selectBestFood(foods, query) {
     .filter(({ score }) => score >= MIN_SCORE)
     .filter(({ food }) => firstSegmentMatches(query, food.description))
     .filter(({ food }) => !isOverlySpecific(query, food.description))
-    .filter(({ food }) => energyKcal(food.foodNutrients))
+    // != null, NOT truthy. A legitimately 0-kcal food -- water, black coffee,
+    // diet soda -- could never be selected, and athletes log all three. The
+    // portal found this: a "water" query dropped bottled water and decaf
+    // coffee and returned "Water convolvulus, raw" (water spinach) at 19 kcal.
+    .filter(({ food }) => energyKcal(food.foodNutrients) != null)
     .filter(({ food }) => queryImpliesDry(query) || !isDryGrainEntry({
       name: food.description,
       calories: energyKcal(food.foodNutrients),
@@ -78,7 +82,10 @@ export function buildUsdaResult(food, query) {
   // USDA listed first -- taking the first match is what stored a kilojoule
   // value as kilocalories and put 1580 kcal on brown rice.
   const per100Cal = energyKcal(nutrients);
-  if (!per100Cal) return null;
+  // Same truthy bug as the selection filter above, and it has to be fixed in
+  // BOTH or a 0-kcal row gets selected here and nulled one line later -- which
+  // is the disqualify-after-choosing shape all over again.
+  if (per100Cal == null) return null;
   const per100P = getNutrient(nutrients, N_PROTEIN) || 0;
   const per100C = getNutrient(nutrients, N_CARBS) || 0;
   const per100F = getNutrient(nutrients, N_FAT) || 0;

@@ -408,6 +408,13 @@ export const DISH_QUALIFIERS = [
   // "milk" was resolving to "Milk and cereal bar" at 413 kcal (portal,
   // 2026-08-11). A bar is a composite that CONTAINS the queried food.
   "bar", "bars", "cracker", "crackers", "cookie", "cookies",
+  // Regression fix 2026-08-12. Sharing selectBestFood moved the portal from
+  // "pick a bad row, let acceptance null it, return nothing" to "skip the bad
+  // row, promote the next one, let acceptance pass it" -- so silence became a
+  // cached wrong answer: "rice" -> Puddings, rice (108), "chicken" and "pork"
+  // -> Bratwurst (176/333). Rejecting a candidate only helps when something
+  // better is behind it; when nothing is, it just promotes the next-worst.
+  "pudding", "puddings", "bratwurst", "brat",
   // "tender" SINGULAR is not here, and the split is not a guess -- it is what
   // USDA's own naming does. Every dish-sense tender in the database is plural
   // ("Fast foods, chicken tenders", "Chicken breast tenders, breaded"); every
@@ -454,6 +461,8 @@ const DISH_FAMILY = {
   tender: "tender", tenders: "tender",
   meatball: "meatball", meatballs: "meatball",
   cake: "cake", cakes: "cake",
+  pudding: "pudding", puddings: "pudding",
+  bratwurst: "sausage", brat: "sausage",
   cracker: "cracker", crackers: "cracker",
   cookie: "cookie", cookies: "cookie",
   lasagna: "lasagna", lasagne: "lasagna",
@@ -508,7 +517,7 @@ const dishFamily = (w) => DISH_FAMILY[w] || w;
  */
 export const BASE_FOODS = [
   "milk", "cheese", "yogurt", "butter", "cream",
-  "bread", "rice", "egg", "eggs",
+  "bread", "rice", "egg", "eggs", "oats", "oatmeal",
   "chicken", "turkey", "beef", "pork",
 ];
 
@@ -754,7 +763,18 @@ export function energyKcal(nutrients) {
   // No usable unit label. Falling back to the id is what caused the bug, so
   // only trust id 1008 here, never 1062, and never an unlabelled value.
   const byId = energy.find((n) => n.nutrientId === 1008 && Number(n.value) > 0 && !unitOf(n));
-  return byId ? Number(byId.value) : null;
+  if (byId) return Number(byId.value);
+
+  // A GENUINE ZERO, last. Every branch above requires > 0 -- correctly, since
+  // a 0 alongside a real value is a placeholder and must not win -- but that
+  // made an actually-zero-calorie food indistinguishable from a missing one,
+  // so water, black coffee and diet soda could never be selected at all. The
+  // portal found the symptom in selectBestFood's filter; the cause was here,
+  // which is why fixing the two call sites alone changed nothing.
+  //
+  // Reached only when nothing positive exists anywhere in the row.
+  const zero = energy.find((n) => unitOf(n) === "KCAL" && Number(n.value) === 0);
+  return zero ? 0 : null;
 }
 
 /* WHOLE-FOOD CALORIE FLOORS -- the one bad-data class no word guard can see.

@@ -810,6 +810,18 @@ is("percent is meaningful", core.usdaSearchTerm("2% milk"), "2% milk");
 is("hyphen is meaningful", core.usdaSearchTerm("low-fat yogurt"), "low-fat yogurt");
 is("apostrophe is meaningful", core.usdaSearchTerm("Hershey's bar"), "Hershey's bar");
 
+// --- genuinely zero-calorie foods -------------------------------------------
+// energyKcal required > 0 in EVERY branch -- correct for a 0 sitting next to a
+// real value, which is a placeholder, but it made an actually-zero food
+// indistinguishable from one with no energy data. Water, black coffee and diet
+// soda could never be selected. The portal found the symptom in a filter; the
+// cause was here, which is why fixing the call sites alone changed nothing.
+const kcalN = (v) => ({ nutrientId: 1008, value: v, unitName: "KCAL" });
+is("a genuine zero is zero", core.energyKcal([kcalN(0)]), 0);
+is("a zero beside kJ is a placeholder", core.energyKcal([kcalN(0), { nutrientId: 1008, value: 400, unitName: "KJ" }]), 96);
+is("normal values unaffected", core.energyKcal([kcalN(250)]), 250);
+is("no energy nutrient is still null", core.energyKcal([{ nutrientId: 1003, value: 5 }]), null);
+
 // --- candidate selection ----------------------------------------------------
 // These are the characterisation fixtures captured from the tracker's private
 // bestMatch BEFORE it was moved into the package, so the move could be proven
@@ -833,11 +845,29 @@ is("rice skips the raw rows", pick("rice", [
 ]), "Rice, brown, long-grain, cooked");
 
 // A row with no energy can never answer and must not win and sink the pool.
+//
+// MOVED DELIBERATELY 2026-08-12, and this fixture is how I found out. It used
+// to answer "Bread, oatmeal". Adding "oatmeal" to BASE_FOODS (to fix "oatmeal"
+// resolving to "Bread, oatmeal, toasted" at 292 against a true 71) means
+// oatmeal bread now takes the same added-staple penalty cheese bread does --
+// it is bread with something IN it. Whole-wheat is the better answer to a bare
+// "bread" query, so the move is an improvement, but it was a side effect and
+// not the goal.
 is("bread skips the energy-less row", pick("bread", [
   food("Bread, white, commercial", null, null, null, null),
   food("Bread, cheese", 408, 14, 46, 19),
   food("Bread, oatmeal", 269, 8.4, 48, 4.4),
-]), "Bread, oatmeal");
+  food("Bread, whole-wheat, commercially prepared", 254, 12, 43, 3.5),
+]), "Bread, whole-wheat, commercially prepared");
+
+// The regressions that sharing selectBestFood caused for the portal: silence
+// became a cached wrong answer, because skipping a bad row only helps when
+// something better is behind it.
+is("rice is not rice pudding", core.isOverlySpecific("rice", "Puddings, rice, ready-to-eat"), true);
+is("chicken is not bratwurst", core.isOverlySpecific("chicken", "Bratwurst, chicken, cooked"), true);
+is("oatmeal is not oatmeal bread", core.isOverlySpecific("cooked oatmeal", "Bread, oatmeal, toasted"), true);
+is("but oatmeal still finds oats", core.isOverlySpecific("oatmeal", "Cereals, oats, regular and quick, cooked with water"), false);
+is("and rice pudding finds itself", core.isOverlySpecific("rice pudding", "Puddings, rice, ready-to-eat"), false);
 
 // Tied on score AND rank -> composition first, calories otherwise.
 is("beef patty takes the median grade", pick("beef patty", [

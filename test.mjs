@@ -810,5 +810,60 @@ is("percent is meaningful", core.usdaSearchTerm("2% milk"), "2% milk");
 is("hyphen is meaningful", core.usdaSearchTerm("low-fat yogurt"), "low-fat yogurt");
 is("apostrophe is meaningful", core.usdaSearchTerm("Hershey's bar"), "Hershey's bar");
 
+// --- candidate selection ----------------------------------------------------
+// These are the characterisation fixtures captured from the tracker's private
+// bestMatch BEFORE it was moved into the package, so the move could be proven
+// behaviour-preserving rather than assumed. Every expectation below is what
+// the pre-move code actually returned. If you change selectBestFood, these
+// tell you exactly which query you changed.
+const nut = (kcal, p, c, f) => [
+  ...(kcal == null ? [] : [{ nutrientId: 1008, value: kcal, unitName: "KCAL" }]),
+  { nutrientId: 1003, value: p }, { nutrientId: 1005, value: c }, { nutrientId: 1004, value: f },
+];
+const food = (description, kcal, p, c, f) => ({ description, foodNutrients: nut(kcal, p, c, f) });
+const pick = (q, foods) => core.selectBestFood(foods, q)?.description ?? null;
+
+// Raw grain must not answer a cooked query, and rejecting it must not take the
+// pool with it -- the cooked rows two places down are the answer.
+is("rice skips the raw rows", pick("rice", [
+  food("Rice, black, unenriched, raw", 370, 8, 76, 3),
+  food("Rice, white, long-grain, regular, raw, unenriched", 365, 7, 80, 0.7),
+  food("Rice, brown, long-grain, cooked", 123, 2.7, 26, 1),
+  food("Rice milk, unsweetened", 47, 0.3, 9.2, 1),
+]), "Rice, brown, long-grain, cooked");
+
+// A row with no energy can never answer and must not win and sink the pool.
+is("bread skips the energy-less row", pick("bread", [
+  food("Bread, white, commercial", null, null, null, null),
+  food("Bread, cheese", 408, 14, 46, 19),
+  food("Bread, oatmeal", 269, 8.4, 48, 4.4),
+]), "Bread, oatmeal");
+
+// Tied on score AND rank -> composition first, calories otherwise.
+is("beef patty takes the median grade", pick("beef patty", [
+  food("Beef, ground, 70% lean meat / 30% fat, patty, cooked, broiled", 277, 24, 0, 20),
+  food("Beef, ground, 85% lean meat / 15% fat, patty, cooked, broiled", 250, 26, 0, 16),
+  food("Beef, ground, 93% lean meat / 7% fat, patty, cooked, broiled", 193, 27, 0, 9),
+]), "Beef, ground, 85% lean meat / 15% fat, patty, cooked, broiled");
+
+is("milk rejects dried and mozzarella", pick("milk", [
+  food("Milk, buttermilk, dried", 387, 34, 49, 5.8),
+  food("Milk, buttermilk, fluid, whole", 62, 3.2, 4.9, 3.3),
+  food("Cheese, mozzarella, whole milk", 299, 22, 2.2, 22),
+]), "Milk, buttermilk, fluid, whole");
+
+is("chicken rejects feet", pick("chicken", [
+  food("Chicken, feet, boiled", 215, 19, 0.2, 14),
+  food("Chicken, ground, raw", 143, 17, 0, 8),
+]), "Chicken, ground, raw");
+
+is("yogurt rejects frozen yogurt", pick("yogurt", [
+  food("Frozen yogurts, chocolate", 131, 3.5, 22, 3.5),
+  food("Yogurt, Greek, plain, nonfat", 59, 10, 3.6, 0.4),
+]), "Yogurt, Greek, plain, nonfat");
+
+is("no survivor returns null", pick("nothing matches this", [food("Beef, ground, raw", 250, 26, 0, 16)]), null);
+is("empty pool returns null", pick("anything", []), null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

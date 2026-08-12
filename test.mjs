@@ -793,5 +793,22 @@ is("two values give no signal", core.preferMedianValue([416, 130]), null);
 is("no spread gives no signal", core.preferMedianValue([200, 200, 200]), null);
 is("a missing value disables it", core.preferMedianValue([100, null, 300]), null);
 
+// --- USDA query sanitisation ------------------------------------------------
+// USDA feeds the query into a Lucene-style parser unescaped and returns HTTP
+// 400 on some punctuation, which a bare `if (!res.ok) return null` turns into
+// a silent miss. Found by the portal 2026-08-12, verified independently here
+// against the live API: / " ~ ^ [ ] { } ( ) break; - & \u2019 % : , . ! + | ? * do not.
+//
+// The class is every fat ratio anyone types -- none had ever reached USDA.
+is("digit ratios survive", core.usdaSearchTerm("85/15 ground beef"), "85 15 ground beef");
+is("so does half/half", core.usdaSearchTerm("half/half"), "half half");
+is("and parentheses", core.usdaSearchTerm("chicken (grilled)"), "chicken grilled");
+is("and inch quotes", core.usdaSearchTerm('beef trimmed to 0" fat'), "beef trimmed to 0 fat");
+// Characters that return 200 and carry meaning in real names are LEFT ALONE --
+// stripping them would trade this bug for a worse one.
+is("percent is meaningful", core.usdaSearchTerm("2% milk"), "2% milk");
+is("hyphen is meaningful", core.usdaSearchTerm("low-fat yogurt"), "low-fat yogurt");
+is("apostrophe is meaningful", core.usdaSearchTerm("Hershey's bar"), "Hershey's bar");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -19,7 +19,7 @@ export {
   FORM_QUALIFIERS, DISH_QUALIFIERS, DRY_GRAIN_KCAL_PER_100G, energyKcal,
   VENUE_QUALIFIERS, genericnessRank, unrequestedVenueOrBrand,
   WHOLE_FOOD_KCAL_FLOOR, implausiblyLowForFood,
-  statedCompositionPct, preferMedianComposition, preferMedianValue,
+  statedCompositionPct, preferMedianComposition, preferMedianValue, usdaSearchTerm,
 } from "./matching.js";
 
 export { BRAND_KEYWORDS, isBranded } from "./brands.js";

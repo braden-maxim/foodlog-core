@@ -1006,3 +1006,30 @@ export function preferMedianValue(values) {
   }
   return best;
 }
+
+/* USDA's search endpoint feeds the query into a Lucene-style parser UNESCAPED,
+ * so a handful of punctuation characters make it return HTTP 400 rather than
+ * an empty result. A bare `if (!res.ok) return null` then makes that
+ * indistinguishable from a miss, and the entire USDA source is silently
+ * skipped.
+ *
+ * Found by the portal 2026-08-12 and verified independently here against the
+ * live API, one character at a time:
+ *
+ *   BREAKS (400):  /  "  ~  ^  [  ]  {  }  (  )
+ *   FINE   (200):  -  &  '  %  :  ,  .  !  +  |  ?  *  \  #  @
+ *
+ * The class is every fat ratio anyone types -- "85/15 ground beef", "80/20",
+ * "93/7" -- none of which had ever reached USDA. Also "half/half" and any
+ * query using " for inches.
+ *
+ * ONLY the measured-breaking set is stripped. Hyphen, ampersand, apostrophe
+ * and percent all return 200 and carry meaning in real food names (low-fat,
+ * Hershey's, 2%), so removing them would trade this bug for a worse one.
+ * normalizeQuery does not cover this either: it rescues the digit-ratio case
+ * but still 400s on "half/half" and "chicken/rice".
+ *
+ * Applied ONLY to the string sent to USDA. Scoring still sees the original. */
+export function usdaSearchTerm(query) {
+  return String(query).replace(/[\/"~^[\]{}()]/g, " ").replace(/\s+/g, " ").trim();
+}

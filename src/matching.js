@@ -855,16 +855,19 @@ export function genericnessRank(query, resultName) {
   const rBrand = BRAND_KEYWORDS.find((b) => rNorm.replace(/[-–—_]/g, " ").includes(b));
   const brandPenalty = rBrand && !norm(query).replace(/[-–—_]/g, " ").includes(rBrand) ? 1000 : 0;
 
-  // HEAD-FOOD PENALTY. firstSegmentMatches waves through any name with more
-  // than two segments, because a cut-of-meat query legitimately has the animal
-  // in the first segment ("skirt steak" -> "Beef, plate steak, inside skirt").
-  // That same exemption lets "milk" reach "Cheese, mozzarella, whole milk",
-  // where milk is a MODIFIER of a different food. Both tie at 2 extra words,
-  // so USDA's ordering decides (portal, 2026-08-11).
+  // NOTE: there was a 50-point head-food penalty here, added for "milk"
+  // reaching "Cheese, mozzarella, whole milk". It has been REMOVED -- the
+  // BASE_FOODS rejection in isOverlySpecific covers that case properly, and
+  // the penalty caused a worse bug than it fixed.
   //
-  // A penalty rather than a rejection, deliberately: the cut-of-meat case is
-  // real and must still win when it is the only survivor. This only decides
-  // which of several survivors is the more generic answer.
+  // It fired on any multi-segment name whose FIRST segment lacked a query
+  // word, and USDA files staples under their parent category: "Pork, cured,
+  // bacon, cooked" (393 kcal) took 50 points on a "bacon" query and lost to
+  // "Canadian bacon" (110). A 3.5x undercount on a common food, and it would
+  // have been written to the shared cache. Caught by the portal 2026-08-12.
+  //
+  // The lesson is the one that keeps recurring: a signal good enough to break
+  // a tie is not automatically good enough to apply everywhere.
   // ADDITIONS ARE NOT DESCRIPTORS. Extra-word count treats "with vegetables"
   // as MORE generic than "creamed, large or small curd", because it is fewer
   // words -- so "cottage cheese" resolved to the vegetable variant while plain
@@ -890,13 +893,10 @@ export function genericnessRank(query, resultName) {
   const headBase = headFoodOf(resultName, norm);
   const addedStaples = rBases.filter((w) => w !== headBase).length;
 
-  const rSegs = String(resultName).split(",");
-  const headMismatch = rSegs.length > 1 && !qWords.some((w) => norm(rSegs[0]).includes(w));
-  const headPenalty = headMismatch ? 50 : 0;
 
   const venuePenalty = isVenue && !queryWantsVenue ? 100 : 0;
   const extra = rWords.filter((w) => !qWords.includes(w)).length;
-  return brandPenalty + venuePenalty + headPenalty + addedStaples * 20 + additions * 10 + extra;
+  return brandPenalty + venuePenalty + addedStaples * 20 + additions * 10 + extra;
 }
 
 /* A restaurant's version of a food, answering a query that never named the

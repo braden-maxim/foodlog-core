@@ -686,8 +686,14 @@ is("reads a stated composition", core.statedCompositionPct("Beef, ground, 85% le
 // different food -- because firstSegmentMatches exempts >2-segment names.
 // A penalty, not a rejection: the cut-of-meat case that exemption exists for
 // must still win when it is the only survivor.
-is("plain milk outranks mozzarella",
-   core.genericnessRank("milk", "Milk, buttermilk, fluid, whole") < core.genericnessRank("milk", "Cheese, mozzarella, whole milk"), true);
+// This was a RANKING assertion when mozzarella merely lost a tie. It is a
+// rejection now (BASE_FOODS), which is stronger -- and the 50-point head
+// penalty that used to carry it has been removed, because it also fired on
+// "Pork, cured, bacon, cooked" for a "bacon" query and cost 3.5x on a common
+// food. See the note in genericnessRank.
+is("milk does not reach mozzarella at all", core.isOverlySpecific("milk", "Cheese, mozzarella, whole milk"), true);
+is("and the canonical bacon row is not penalised",
+   core.genericnessRank("bacon", "Pork, cured, bacon, cooked") < 10, true);
 is("a bar is a composite", core.isOverlySpecific("milk", "Milk and cereal bar"), true);
 
 // "cottage cheese" resolved to the vegetable variant because "with vegetables"

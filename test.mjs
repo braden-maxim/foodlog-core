@@ -810,6 +810,14 @@ is("percent is meaningful", core.usdaSearchTerm("2% milk"), "2% milk");
 is("hyphen is meaningful", core.usdaSearchTerm("low-fat yogurt"), "low-fat yogurt");
 is("apostrophe is meaningful", core.usdaSearchTerm("Hershey's bar"), "Hershey's bar");
 
+// "oatmeal" was missing from GRAIN_PATTERN even though "oat" was in it, and
+// \boat\b cannot match inside "Oatmeal" -- so a 367 kcal dry instant row was
+// not a dry grain at all and answered a cooked-oatmeal query at 5x true.
+const grainRow = (name, calories, fat) => ({ name, calories, fat, serving_size: 100, serving_unit: "g" });
+is("dry instant oatmeal is a dry grain", core.isDryGrainEntry(grainRow("Cereals, QUAKER, Instant Oatmeal Organic, Regular", 367, 6.5)), true);
+is("cooked oatmeal is not", core.isDryGrainEntry(grainRow("Oatmeal, cooked with water", 71, 1.52)), false);
+is("rolled oats still caught", core.isDryGrainEntry(grainRow("Oats, whole grain, rolled", 389, 6.9)), true);
+
 // --- genuinely zero-calorie foods -------------------------------------------
 // energyKcal required > 0 in EVERY branch -- correct for a 0 sitting next to a
 // real value, which is a placeholder, but it made an actually-zero food

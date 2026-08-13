@@ -114,7 +114,11 @@ export const STOP_WORDS = new Set(["the","of","with","and","in","on","a","an","c
 
 export const MIN_SCORE = 0.75;
 
-export const GRAIN_PATTERN = /\b(rice|oat|oats|pasta|quinoa|barley|farro|lentil|lentils|couscous|bulgur|millet|buckwheat|grits|polenta|beans?|chickpeas?|garbanzo|pinto|cannellini|kidney|navy)\b/i;
+// "oatmeal" is listed separately and FIRST: \boat\b cannot match inside
+// "Oatmeal", so a 367 kcal dry instant-oatmeal row was not recognised as a dry
+// grain at all and answered a cooked-oatmeal query at 5x. Longest alternative
+// first so the boundary check does not have to backtrack.
+export const GRAIN_PATTERN = /\b(rice|oatmeal|oats|oat|pasta|quinoa|barley|farro|lentil|lentils|couscous|bulgur|millet|buckwheat|grits|polenta|beans?|chickpeas?|garbanzo|pinto|cannellini|kidney|navy)\b/i;
 
 // Is this row DRY-weight grain/legume data, which must not be scaled against
 // a weight the user stated for cooked food?

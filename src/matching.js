@@ -751,15 +751,42 @@ const KCAL_PER_KJ = 1 / 4.184;
 
 export function energyKcal(nutrients) {
   if (!Array.isArray(nutrients)) return null;
+  // ATWATER ENTRIES COUNT AS ENERGY. Many Foundation rows publish no plain
+  // "Energy" at all -- only "Energy (Atwater General Factors)" (id 2047) and
+  // "Energy (Atwater Specific Factors)" (id 2048), both in KCAL. Reading only
+  // the plain entry discarded them as having no energy: the portal scanned 599
+  // real rows and found 30 of 38 supposed nulls publish a perfectly good kcal
+  // value under one of these names. Verified here against the live API --
+  // "Beef, ribeye, steak, boneless, choice, raw" has 2047=254 and 2048=260 and
+  // nothing else.
+  //
+  // Same root as the kJ-as-kcal bug this function was written for: reading
+  // energy by the name we expect instead of by what the row actually publishes.
   const energy = nutrients.filter(
     (n) => n.nutrientId === 1008 || n.nutrientId === 1062 ||
-           n.nutrientNumber === "208" || n.nutrientNumber === "268"
+           n.nutrientId === 2047 || n.nutrientId === 2048 ||
+           n.nutrientNumber === "208" || n.nutrientNumber === "268" ||
+           n.nutrientNumber === "957" || n.nutrientNumber === "958"
   );
   if (!energy.length) return null;
 
   const unitOf = (n) => String(n.unitName || "").toUpperCase();
-  const kcal = energy.find((n) => unitOf(n) === "KCAL" && Number(n.value) > 0);
-  if (kcal) return Number(kcal.value);
+  const positiveKcal = (pred) => {
+    const hit = energy.find((n) => unitOf(n) === "KCAL" && Number(n.value) > 0 && pred(n));
+    return hit ? Number(hit.value) : null;
+  };
+
+  // Priority is deliberate. Plain Energy first, then Atwater GENERAL before
+  // SPECIFIC: general factors are 4/4/9, the same arithmetic
+  // caloriesContradictMacros uses, so a row taken this way can never disagree
+  // with its own macros under our own check. Specific factors use food-specific
+  // coefficients and would (that ribeye is 254 general against 260 specific).
+  const plain = positiveKcal((n) => n.nutrientId === 1008 || n.nutrientNumber === "208");
+  if (plain != null) return plain;
+  const atwaterGeneral = positiveKcal((n) => n.nutrientId === 2047 || n.nutrientNumber === "957");
+  if (atwaterGeneral != null) return atwaterGeneral;
+  const atwaterSpecific = positiveKcal((n) => n.nutrientId === 2048 || n.nutrientNumber === "958");
+  if (atwaterSpecific != null) return atwaterSpecific;
 
   const kj = energy.find((n) => (unitOf(n) === "KJ" || unitOf(n) === "KILOJOULES") && Number(n.value) > 0);
   if (kj) return Math.round(Number(kj.value) * KCAL_PER_KJ);

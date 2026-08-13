@@ -825,6 +825,20 @@ is("rolled oats still caught", core.isDryGrainEntry(grainRow("Oats, whole grain,
 // soda could never be selected. The portal found the symptom in a filter; the
 // cause was here, which is why fixing the call sites alone changed nothing.
 const kcalN = (v) => ({ nutrientId: 1008, value: v, unitName: "KCAL" });
+// Many Foundation rows publish NO plain "Energy" -- only Atwater factors. The
+// portal scanned 599 real rows: 30 of 38 supposed nulls had a good kcal value
+// under one of these names, and we were discarding them as having none.
+// Verified against the live API: "Beef, ribeye, steak, boneless, choice, raw"
+// carries 2047=254 and 2048=260 and nothing else.
+const nut = (id, unit, value, num) => ({ nutrientId: id, unitName: unit, value, nutrientNumber: num });
+is("atwater general is energy", core.energyKcal([nut(2047, "KCAL", 254, "957")]), 254);
+is("atwater specific is energy", core.energyKcal([nut(2048, "KCAL", 260, "958")]), 260);
+// General before specific: general factors ARE 4/4/9, the same arithmetic
+// caloriesContradictMacros uses, so a row taken this way cannot disagree with
+// its own macros under our own check. Specific factors would.
+is("general beats specific", core.energyKcal([nut(2048, "KCAL", 260, "958"), nut(2047, "KCAL", 254, "957")]), 254);
+is("plain Energy beats both", core.energyKcal([nut(2047, "KCAL", 254, "957"), nut(1008, "KCAL", 250)]), 250);
+
 is("a genuine zero is zero", core.energyKcal([kcalN(0)]), 0);
 is("a zero beside kJ is a placeholder", core.energyKcal([kcalN(0), { nutrientId: 1008, value: 400, unitName: "KJ" }]), 96);
 is("normal values unaffected", core.energyKcal([kcalN(250)]), 250);

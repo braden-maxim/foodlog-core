@@ -929,5 +929,29 @@ is("yogurt rejects frozen yogurt", pick("yogurt", [
 is("no survivor returns null", pick("nothing matches this", [food("Beef, ground, raw", 250, 26, 0, 16)]), null);
 is("empty pool returns null", pick("anything", []), null);
 
+// A COUNT-BASED SERVING MUST NOT RENDER AS "Per serving (3serving)". The
+// values are the TOTAL for all 3, and the old string said per-serving while
+// naming three of them -- an invitation to multiply a complete figure again.
+// ~40% of curated rows use serving_unit "serving" (2026-08-14 audit).
+{
+  const multi = core.buildEstimatePrompt({ description: "hideaway pizza large, 3 slices",
+    dbRef: { name: "Hideaway Pizza Special Pizza Hand Tossed Large, 3 slices", source: "claude_web_search",
+             calories: 1200, protein: 60, carbs: 120, fat: 55, serving_size: 3, serving_unit: "serving" } });
+  is("count basis says TOTAL", /TOTAL for all 3/.test(multi), true);
+  is("count basis gives the divisor", /divide by 3/.test(multi), true);
+  is("count basis drops the bogus unit", /3serving/.test(multi), false);
+
+  const one = core.buildEstimatePrompt({ description: "texas roadhouse roll",
+    dbRef: { name: "Texas Roadhouse Roll (plain, no butter)", source: "claude_web_search",
+             calories: 130, protein: 4, carbs: 24, fat: 2, serving_size: 1, serving_unit: "serving" } });
+  is("single serving reads plainly", /For one serving/.test(one), true);
+  is("single serving says no TOTAL", /TOTAL for all/.test(one), false);
+
+  const grams = core.buildEstimatePrompt({ description: "ribeye steak 8 oz",
+    dbRef: { name: "Beef, ribeye steak, boneless, choice, raw", source: "claude_web_search",
+             calories: 241, protein: 18.7, carbs: 0, fat: 18.4, serving_size: 100, serving_unit: "g" } });
+  is("weight basis unchanged", /Per serving \(100g\)/.test(grams), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

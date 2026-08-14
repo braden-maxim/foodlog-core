@@ -59,8 +59,34 @@ Worked example: reference 195 kcal/100g raw, user says "6 ounces" (170g, assumed
       ? `\n\nSTATE OF THIS REFERENCE — COOKED. These numbers are per 100g of COOKED weight. Apply them directly to the user's stated weight unless they explicitly said the weight was raw.`
       : "";
 
+  // "Per serving (3serving)" IS NOT A UNIT, IT IS AN AMBIGUITY. A weight or
+  // volume basis reads fine -- "Per serving (100g)" can only mean one thing --
+  // but a COUNT basis renders as "Per serving (3serving): 1200 kcal", which
+  // says per-serving and then names three of them. The values are the TOTAL
+  // for all 3, so the natural misreading multiplies an already-complete figure
+  // by the count again.
+  //
+  // Not hypothetical: ~40% of the curated rows use serving_unit "serving", and
+  // the convention is consistent across every one checked 2026-08-14 --
+  // Hideaway Pizza 1200/3 slices, Texas Roadhouse rolls 390/3, dumplings
+  // 207/5, Waffle House bacon 90/3 strips, Sara Lee bread 90/2 slices. Each is
+  // the combined value, and each renders as if it were per-one.
+  //
+  // So say TOTAL out loud and give the per-unit figure, rather than leaving
+  // the model to infer which reading was meant.
+  const svSize = Number(dbRef?.serving_size);
+  const svUnit = String(dbRef?.serving_unit || "").toLowerCase();
+  const isCountBasis = (svUnit === "serving" || svUnit === "servings") && Number.isFinite(svSize);
+  const basisLine = !dbRef
+    ? ""
+    : isCountBasis && svSize > 1
+      ? `TOTAL for all ${svSize} (NOT per one — divide by ${svSize} for a single unit): `
+      : isCountBasis
+        ? `For one serving of the item as named: `
+        : `Per serving (${dbRef.serving_size}${dbRef.serving_unit}): `;
+
   const dbRefBlock = dbRef
-    ? `DATABASE REFERENCE — from ${dbRef.source === "usda" ? "USDA FoodData Central" : dbRef.source === "claude_web_search" ? "a live web search of the brand's published nutrition" : "Open Food Facts"} (authoritative). Use these exact per-serving values and only scale by quantity${isRawRef ? ", after the raw→cooked conversion described below" : ""}.\nItem: ${dbRef.name}\nPer serving (${dbRef.serving_size}${dbRef.serving_unit}): ${dbRef.calories} kcal · ${dbRef.protein}g protein · ${dbRef.carbs}g carbs · ${dbRef.fat}g fat${stateNote}\n\n`
+    ? `DATABASE REFERENCE — from ${dbRef.source === "usda" ? "USDA FoodData Central" : dbRef.source === "claude_web_search" ? "a live web search of the brand's published nutrition" : "Open Food Facts"} (authoritative). Use these exact values and only scale by quantity${isRawRef ? ", after the raw→cooked conversion described below" : ""}.\nItem: ${dbRef.name}\n${basisLine}${dbRef.calories} kcal · ${dbRef.protein}g protein · ${dbRef.carbs}g carbs · ${dbRef.fat}g fat${stateNote}\n\n`
     : "";
 
   const prompt = `You are a nutrition estimator. The user describes what they ate conversationally, often by voice, so expect informal language, filler words, phonetic spellings, and spoken numbers.

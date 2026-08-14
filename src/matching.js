@@ -208,7 +208,30 @@ export function brandedSizeMismatch(query, cachedRow) {
   if (cachedRow.source !== "claude_web_search") return false;
   const qSize = extractSize(query);
   if (!qSize || cachedRow.serving_size == null || !cachedRow.serving_unit) return false;
-  if (qSize.unit !== String(cachedRow.serving_unit).toLowerCase()) return true;
+  // A PER-100 ROW IS A DENSITY BASIS, NOT A PRODUCT SIZE, so a size in the
+  // query is not a mismatch with it -- it is the thing the row exists to be
+  // scaled by, exactly as the USDA/OFF rows above are.
+  //
+  // The scoping comment above says this check is for claude_web_search
+  // because that source means "branded, with a fixed published serving".
+  // That stopped being true once the same source was reused for hand-curated
+  // GENERIC staples (bacon, 2% milk, 85/15 beef, and 2026-08-14 ribeye at
+  // 241 kcal/100g). The portal measured the consequence: "ribeye steak" and
+  // "rib eye steak" read the seed, but "ribeye steak (8 oz)" and "ribeye
+  // steak, raw, 8 oz" -- half their real entries -- were rejected by this
+  // guard and fell through to USDA.
+  //
+  // Same conflation that made an ilike delete take a branded row with it:
+  // TWO CATEGORIES SHARE source = 'claude_web_search' AND ONLY ONE HAS AN
+  // UNSCALABLE SERVING. Source cannot tell them apart; the serving basis can.
+  //
+  // Deliberately narrow -- only 100 g / 100 ml, the canonical density basis.
+  // Real branded seeds state a product size (12oz, 20oz, 30ct), never 100g,
+  // so this cannot weaken the case the guard was built for: a 32oz Hulk
+  // still cannot read a 20oz row.
+  const unit = String(cachedRow.serving_unit).toLowerCase();
+  if (Number(cachedRow.serving_size) === 100 && (unit === "g" || unit === "ml")) return false;
+  if (qSize.unit !== unit) return true;
   return Math.abs(qSize.value - cachedRow.serving_size) > 0.01;
 }
 

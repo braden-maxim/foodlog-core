@@ -71,6 +71,18 @@ is("matching size accepted", core.brandedSizeMismatch("hulk 32oz", { source: "cl
 // the size check is deliberately scoped to web-searched brand rows only.
 is("usda row exempt from size check", core.brandedSizeMismatch("hulk 32oz", { source: "usda", serving_size: 100, serving_unit: "g" }), false);
 
+// A HAND-CURATED GENERIC ROW IS PER-100, NOT A PRODUCT SIZE. The source
+// 'claude_web_search' now covers both branded items and curated staples, and
+// only the branded ones have an unscalable serving. Portal measured the cost
+// on 2026-08-14: the ribeye seed answered "ribeye steak" but not "ribeye steak
+// (8 oz)", which is half their real ribeye entries.
+const seed100g = { source: "claude_web_search", serving_size: 100, serving_unit: "g" };
+is("per-100g seed serves a sized query", core.brandedSizeMismatch("ribeye steak (8 oz)", seed100g), false);
+is("per-100g seed serves a gram-sized query", core.brandedSizeMismatch("ribeye steak 250g", seed100g), false);
+// The exemption must not reach the case the guard was built for.
+is("branded size still caught after per-100 exemption", core.brandedSizeMismatch("longhorn steakhouse ribeye 16oz", { source: "claude_web_search", serving_size: 12, serving_unit: "oz" }), true);
+is("branded count still caught after per-100 exemption", core.brandedSizeMismatch("chick-fil-a nuggets 12 ct", { source: "claude_web_search", serving_size: 30, serving_unit: "piece" }), true);
+
 // --- prompt ----------------------------------------------------------------
 const rawRef = { name: 'Beef, plate steak, inside skirt, trimmed to 0" fat, choice, raw', calories: 195, protein: 20.1, carbs: 0, fat: 12.8, serving_size: 100, serving_unit: "g", source: "usda" };
 const rawPrompt = core.buildEstimatePrompt({ description: "skirt steak 6 ounces", dbRef: rawRef });

@@ -973,5 +973,21 @@ is("empty pool returns null", pick("anything", []), null);
   is("fl oz stays a measure", /Per serving \(12floz\)/.test(mk(12, "floz")), true);
 }
 
+// Edges the portal's 0.5 sweep exposed. The input was unrealistic, the
+// renderings were not: a plural unit at size 1, and a fraction claiming "one".
+{
+  const mk = (size, unit) => core.buildEstimatePrompt({ description: "x",
+    dbRef: { name: "X", source: "claude_web_search", calories: 90, protein: 6, carbs: 0, fat: 7,
+             serving_size: size, serving_unit: unit } });
+  is("plural unit at size 1 reads singular", /For one strip of the item/.test(mk(1, "strips")), true);
+  is("no For one strips", /For one strips/.test(mk(1, "strips")), false);
+  is("divisor uses the singular", /divide by 3 for a single dumpling\)/.test(mk(3, "dumplings")), true);
+  is("fraction does not claim one whole", /For one /.test(mk(0.5, "serving")), false);
+  is("fraction states the fraction", /For 0.5 of a serving/.test(mk(0.5, "serving")), true);
+  is("fraction warns against double-scaling", /ALREADY scaled/.test(mk(0.5, "bar")), true);
+  // The volume trap must survive all of the above.
+  is("half cup still a measure", /Per serving \(0.5cup\)/.test(mk(0.5, "cup")), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

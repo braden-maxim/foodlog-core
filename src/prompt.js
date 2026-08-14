@@ -99,15 +99,26 @@ Worked example: reference 195 kcal/100g raw, user says "6 ounces" (170g, assumed
   const svSize = Number(dbRef?.serving_size);
   const svUnit = String(dbRef?.serving_unit || "").toLowerCase().trim();
   const isCountBasis = Number.isFinite(svSize) && svUnit !== "" && !MEASURE_UNITS.has(svUnit);
-  // "3 serving" reads as a typo and undercuts the sentence doing the work.
+  // "3 serving" reads as a typo and undercuts the sentence doing the work, and
+  // a unit cached in the plural ("strips") gave "For one strips" at size 1 --
+  // realistic, since handleCacheWrite takes whatever unit string it is handed.
   const plural = svSize > 1 && !svUnit.endsWith("s") ? `${svUnit}s` : svUnit;
+  const singular = svUnit.endsWith("s") && svUnit.length > 1 ? svUnit.slice(0, -1) : svUnit;
   const basisLine = !dbRef
     ? ""
     : isCountBasis && svSize > 1
-      ? `TOTAL for all ${svSize} ${plural} (NOT per one — divide by ${svSize} for a single ${svUnit}): `
-      : isCountBasis
-        ? `For one ${svUnit} of the item as named: `
-        : `Per serving (${dbRef.serving_size}${dbRef.serving_unit}): `;
+      ? `TOTAL for all ${svSize} ${plural} (NOT per one — divide by ${svSize} for a single ${singular}): `
+      : isCountBasis && svSize === 1
+        ? `For one ${singular} of the item as named: `
+        // A FRACTIONAL COUNT MUST NOT SAY "for one". No curated row uses one
+        // today -- fractions are cached as grams ("1/4 bar" is stored 15.5g) --
+        // but "For one serving" on a 0.5 row states the wrong QUANTITY, which
+        // is a numeric error rather than the grammar slip above. Surfaced by
+        // the portal probing 0.5 against every unit; they judged the input
+        // unrealistic and were right about that, and it was still worth closing.
+        : isCountBasis
+          ? `For ${svSize} of a ${singular} — these values are ALREADY scaled to that fraction, do not divide again: `
+          : `Per serving (${dbRef.serving_size}${dbRef.serving_unit}): `;
 
   const dbRefBlock = dbRef
     ? `DATABASE REFERENCE — from ${dbRef.source === "usda" ? "USDA FoodData Central" : dbRef.source === "claude_web_search" ? "a live web search of the brand's published nutrition" : "Open Food Facts"} (authoritative). Use these exact values and only scale by quantity${isRawRef ? ", after the raw→cooked conversion described below" : ""}.\nItem: ${dbRef.name}\n${basisLine}${dbRef.calories} kcal · ${dbRef.protein}g protein · ${dbRef.carbs}g carbs · ${dbRef.fat}g fat${stateNote}\n\n`

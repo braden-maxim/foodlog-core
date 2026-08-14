@@ -85,4 +85,9 @@ console.log(`\n${rejections} rejections to review.`);
 console.log("Each is a judgement call: is the bracketed word naming the FOOD, or describing it?");
 console.log("Composite and processed products are correct rejections -- deli loaf, canned hash,");
 console.log("Polish sausage, rice cakes, hash browns, formed sandwich steaks.");
-console.log("A full run on 2026-08-07 found 45, every one correct. Expect the same.");
+// THE NUMBER ONLY MEANS SOMETHING AGAINST THE PREVIOUS RUN. 2026-08-07 found
+// 45; by 2026-08-14 the same sweep found 172 with nothing wrong, because every
+// guard added in between rejects more rows. A raw count read as an absolute
+// looks like a 4x explosion and is not one -- diff against the prior commit
+// (git stash, rerun, compare names) and review only what is NEW.
+console.log("2026-08-14: 172, all correct. Compare to the last run, not to zero.");

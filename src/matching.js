@@ -305,8 +305,44 @@ export const SUBTYPE_QUALIFIERS = {
   // reaches it, and it ties with "Yogurt, Greek, plain, nonfat" on word count.
   // "frozen" is a STOP WORD, which is why the loop above had to start reading
   // the raw text.
-  yogurt: ["frozen"],
-  yogurts: ["frozen"],
+  // PLANT VERSIONS OF DAIRY. Live regression 2026-08-14, reported by the
+  // portal: once the Atwater energy recovery stopped discarding rows that
+  // publish only "Energy (Atwater General Factors)", plant milks entered the
+  // pool for the first time and "milk" resolved to "Oat milk, unsweetened"
+  // (48) where it had been "Milk, buttermilk, fluid" (62).
+  //
+  // Nothing existing could see it, and the reason is a rule working as
+  // designed: headFoodOf deliberately takes the LAST staple, so "Oat milk" is
+  // a milk. That is right for an OAT MILK query and wrong for a bare one.
+  // This is the same shape as the SPECIES entry in FORM_QUALIFIERS -- a bare
+  // "milk" or "cheese" query means cow -- extended from other animals to
+  // other kingdoms.
+  //
+  // Named sources rather than a blanket "plant"/"vegetarian" rule, for the
+  // reason recorded at FORM_QUALIFIERS: almond milk really IS plant based, so
+  // the generic word rejects the row a plant-milk query is asking for.
+  // Symmetric like every other entry, so "oat milk" still gets oat milk.
+  //
+  // Scoped per base word, NOT added to FORM_QUALIFIERS, because that list
+  // matches words exactly and globally: "almond" there would reject "Nuts,
+  // almonds, raw" for a query of "almonds", since the plural does not read as
+  // the query having asked for it.
+  ...Object.fromEntries(
+    ["milk", "milks", "cheese", "cheeses", "yogurt", "yogurts", "cream", "creams", "butter"].map((base) => [
+      base,
+      ["oat", "almond", "soy", "soya", "rice", "coconut", "cashew", "hemp", "flax", "pea", "hazelnut", "macadamia"]
+        // Frozen yogurt is a dessert, not cold yogurt. Needed once the
+        // null-energy filter let it into the pool: it heads with "yogurt", so
+        // no head-food rule reaches it, and it ties with "Yogurt, Greek,
+        // plain, nonfat" on word count. "frozen" is a STOP WORD, which is why
+        // the loop reads the raw text.
+        .concat(base.startsWith("yogurt") ? ["frozen"] : [])
+        // "Peanut butter" is the head-food rule's blind spot for butter, the
+        // same way "Oat milk" is for milk. Peanut is only ever a butter
+        // qualifier -- there is no peanut milk in USDA -- so it stays scoped.
+        .concat(base === "butter" ? ["peanut", "sunflower", "apple"] : []),
+    ])
+  ),
 };
 
 // relevanceScore alone treats a short/generic query as 100% relevant against any
@@ -530,16 +566,53 @@ export const BASE_FOODS = [
 // English puts the head of a compound: "Rice milk" is a milk, not a rice.
 function headFoodOf(resultName, norm) {
   const n = String(resultName);
-  const seg = n.includes(",") ? n.split(",")[0] : n;
-  const words = norm(seg).split(" ").filter(Boolean);
-  if (!words.length) return null;
-  // The LAST staple in the head segment, not the first: "Rice milk" is a milk,
-  // and taking the first would have called it a rice and kept it for a rice
-  // query -- which is the row that was left when everything else had been
-  // rejected. Comma or no comma, the head of an English compound is last.
-  const bases = words.filter((w) => BASE_FOODS.includes(w));
-  if (bases.length) return bases[bases.length - 1];
+  // USDA leads a great many names with a CATEGORY rather than the food:
+  // "Beverages, rice milk, unsweetened", "Nuts, coconut milk, frozen",
+  // "Cereals ready-to-eat, ...". The first segment then names no staple at
+  // all, this returned null, and the head-food rule -- the one thing that
+  // separates one staple from another -- silently did not run.
+  //
+  // Found 2026-08-14 probing the plant-milk regression: a query of "rice"
+  // resolved to "Beverages, rice milk, unsweetened" at 47 kcal against ~130
+  // for cooked rice. Same bug the portal reported on "milk", exposed by the
+  // same Atwater recovery, but invisible to the dairy fix because the query
+  // is not a dairy word.
+  //
+  // So: take the first segment that names a staple, not merely the first
+  // segment. This can only ever ADD a verdict where there was none -- a
+  // segment that already names a staple is still read exactly as before.
+  const segs = n.includes(",") ? n.split(",") : [n];
+  for (const seg of segs) {
+    const words = norm(seg).split(" ").filter(Boolean);
+    if (!words.length) continue;
+    // The LAST staple in the segment, not the first: "Rice milk" is a milk,
+    // and taking the first would have called it a rice and kept it for a rice
+    // query -- which is the row that was left when everything else had been
+    // rejected. Comma or no comma, the head of an English compound is last.
+    const bases = words.filter((w) => BASE_FOODS.includes(w));
+    if (bases.length) return bases[bases.length - 1];
+  }
   return null;
+}
+
+/* Two names for ONE staple. Not varieties -- the same food, so the head-food
+ * rule must not read them as different ones.
+ *
+ * Needed the moment headFoodOf started falling through to a later segment:
+ * "oatmeal" against "Cereals, oats, regular and quick" used to find no staple
+ * in the head segment ("Cereals") and return null, which meant no verdict. It
+ * now correctly reaches "oats" -- and then rejected the row, because "oats"
+ * and "oatmeal" are separate BASE_FOODS entries and neither the plural nor
+ * the singular test bridges them. Caught by the suite, not by reading.
+ */
+const STAPLE_SYNONYMS = [["oats", "oatmeal"]];
+
+function sameStaple(a, b) {
+  if (a === b) return true;
+  // Plural either way: "egg" query against an "eggs" head and vice versa.
+  if (a.endsWith("s") && a.slice(0, -1) === b) return true;
+  if (b.endsWith("s") && b.slice(0, -1) === a) return true;
+  return STAPLE_SYNONYMS.some((g) => g.includes(a) && g.includes(b));
 }
 
 export function isOverlySpecific(query, resultName) {
@@ -572,9 +645,7 @@ export function isOverlySpecific(query, resultName) {
   const qBases = qWords.filter((w) => BASE_FOODS.includes(w));
   if (qBases.length) {
     const head = headFoodOf(resultName, norm);
-    if (head && !qBases.includes(head) &&
-        !(head.endsWith("s") && qBases.includes(head.slice(0, -1))) &&
-        !qBases.includes(head + "s")) return true;
+    if (head && !qBases.some((q) => sameStaple(q, head))) return true;
   }
 
   const pcts = (words) => words.filter((w) => /^\d+(\.\d+)?pct$/.test(w));

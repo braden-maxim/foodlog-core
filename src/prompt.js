@@ -74,15 +74,39 @@ Worked example: reference 195 kcal/100g raw, user says "6 ounces" (170g, assumed
   //
   // So say TOTAL out loud and give the per-unit figure, rather than leaving
   // the model to infer which reading was meant.
+  // DECIDED BY UNIT SHAPE, NOT BY A LIST OF COUNT WORDS. The first version of
+  // this checked for the literal unit "serving", which covers today's rows and
+  // nothing else: a curated row saying 3 strips, 2 slices, 5 dumplings or 4
+  // cookies renders "Per serving (3strips)" and reintroduces the whole bug.
+  // Listing the count words instead is the failure the word lists in
+  // matching.js kept hitting -- the list is only ever as complete as the last
+  // person to remember it. (Portal's suggestion, 2026-08-14.)
+  //
+  // So invert it: MEASURES are a closed, genuinely finite set -- mass and
+  // volume. Anything else with a number in front of it is a count of things.
+  //
+  // The trap in inverting it is VOLUME. cup/tbsp/tsp are not weights, but they
+  // are not counts either, and "brussels sprouts, cooked" is cached at 0.5 cup
+  // today. Treating those as counts would drop the measure from the line and
+  // tell the model 0.5 cup of sprouts is "one serving as named".
+  const MEASURE_UNITS = new Set([
+    "g", "gram", "grams", "kg", "kilogram", "kilograms", "mg",
+    "oz", "ounce", "ounces", "floz", "fl oz", "lb", "lbs", "pound", "pounds",
+    "ml", "milliliter", "milliliters", "l", "liter", "liters", "litre", "litres",
+    "cup", "cups", "tbsp", "tablespoon", "tablespoons", "tsp", "teaspoon", "teaspoons",
+    "pint", "pints", "quart", "quarts", "gallon", "gallons",
+  ]);
   const svSize = Number(dbRef?.serving_size);
-  const svUnit = String(dbRef?.serving_unit || "").toLowerCase();
-  const isCountBasis = (svUnit === "serving" || svUnit === "servings") && Number.isFinite(svSize);
+  const svUnit = String(dbRef?.serving_unit || "").toLowerCase().trim();
+  const isCountBasis = Number.isFinite(svSize) && svUnit !== "" && !MEASURE_UNITS.has(svUnit);
+  // "3 serving" reads as a typo and undercuts the sentence doing the work.
+  const plural = svSize > 1 && !svUnit.endsWith("s") ? `${svUnit}s` : svUnit;
   const basisLine = !dbRef
     ? ""
     : isCountBasis && svSize > 1
-      ? `TOTAL for all ${svSize} (NOT per one — divide by ${svSize} for a single unit): `
+      ? `TOTAL for all ${svSize} ${plural} (NOT per one — divide by ${svSize} for a single ${svUnit}): `
       : isCountBasis
-        ? `For one serving of the item as named: `
+        ? `For one ${svUnit} of the item as named: `
         : `Per serving (${dbRef.serving_size}${dbRef.serving_unit}): `;
 
   const dbRefBlock = dbRef

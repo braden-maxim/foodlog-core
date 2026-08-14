@@ -953,5 +953,25 @@ is("empty pool returns null", pick("anything", []), null);
   is("weight basis unchanged", /Per serving \(100g\)/.test(grams), true);
 }
 
+// UNIT SHAPE, NOT A LIST OF COUNT WORDS. A curated row can use any unit
+// handleCacheWrite accepts, so anything that is not a mass or volume measure
+// has to read as a count without someone extending a list first.
+{
+  const mk = (size, unit) => core.buildEstimatePrompt({ description: "x",
+    dbRef: { name: "X", source: "claude_web_search", calories: 90, protein: 6, carbs: 0, fat: 7,
+             serving_size: size, serving_unit: unit } });
+  is("named count unit says TOTAL", /TOTAL for all 3 strips/.test(mk(3, "strips")), true);
+  is("named count unit gives divisor", /divide by 3 for a single strip/.test(mk(3, "strips")), true);
+  is("count unit is pluralised", /TOTAL for all 5 dumplings/.test(mk(5, "dumpling")), true);
+  is("no bogus glued unit for counts", /3strips/.test(mk(3, "strips")), false);
+  is("single named count reads plainly", /For one bar of the item/.test(mk(1, "bar")), true);
+  // Volume is the trap in inverting the list: not a weight, not a count.
+  is("cup stays a measure", /Per serving \(0.5cup\)/.test(mk(0.5, "cup")), true);
+  is("cup is not called a count", /TOTAL for all/.test(mk(2, "cup")), false);
+  is("tbsp stays a measure", /Per serving \(2tbsp\)/.test(mk(2, "tbsp")), true);
+  is("grams stay a measure", /Per serving \(100g\)/.test(mk(100, "g")), true);
+  is("fl oz stays a measure", /Per serving \(12floz\)/.test(mk(12, "floz")), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -5,7 +5,8 @@
 
 import {
   energyKcal, relevanceScore, genericnessRank, firstSegmentMatches, isOverlySpecific,
-  isDryGrainEntry, queryImpliesDry, preferMedianComposition, preferMedianValue, MIN_SCORE,
+  isDryGrainEntry, queryImpliesDry, isRawProteinEntry, queryImpliesRaw,
+  preferMedianComposition, preferMedianValue, MIN_SCORE,
 } from "./matching.js";
 
 // USDA nutrient IDs. These were left behind in the health tracker when
@@ -61,6 +62,13 @@ export function selectBestFood(foods, query) {
       serving_size: 100,
       serving_unit: "g",
     }))
+    // Cooked by default, same shape and same reason as the dry-grain filter
+    // above: USDA offers both states, the user means the one they ate, and
+    // the raw row under-counts by ~35% for meat. Applied on BOTH the write
+    // path (here) and the cache read, so a raw row is never stored and never
+    // has to be rejected later -- an asymmetric guard is what produces a
+    // permanent miss that re-caches the same bad row forever.
+    .filter(({ food }) => queryImpliesRaw(query) || !isRawProteinEntry({ name: food.description }))
     // The index keeps the sort stable, so USDA's own order still decides when
     // nothing else distinguishes two rows.
     .sort((a, b) => b.score - a.score || a.rank - b.rank || a.i - b.i);

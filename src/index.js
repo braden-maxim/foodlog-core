@@ -14,6 +14,7 @@ export {
   STOP_WORDS, MIN_SCORE, GRAIN_PATTERN, SIZE_RE, SUBTYPE_QUALIFIERS,
   normalizeQuery, relevanceScore, isOverlySpecific, firstSegmentMatches,
   isDryGrainEntry, queryImpliesDry,
+  COOKED_BY_DEFAULT_PATTERN, isRawProteinEntry, queryImpliesRaw,
   extractSize, brandCacheKey, brandedSizeMismatch,
   MACRO_TOLERANCE, caloriesContradictMacros,
   FORM_QUALIFIERS, DISH_QUALIFIERS, DRY_GRAIN_KCAL_PER_100G, energyKcal,

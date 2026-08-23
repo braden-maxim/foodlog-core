@@ -919,7 +919,61 @@ is("milk rejects dried and mozzarella", pick("milk", [
 is("chicken rejects feet", pick("chicken", [
   food("Chicken, feet, boiled", 215, 19, 0.2, 14),
   food("Chicken, ground, raw", 143, 17, 0, 8),
-]), "Chicken, ground, raw");
+  food("Chicken, ground, cooked", 189, 23, 0, 10),
+]), "Chicken, ground, cooked");
+
+// COOKED IS THE DEFAULT. Reported 2026-08-23: "sirloin steak" resolved to
+// "Beef, top sirloin steak, raw" (140) against ~177 for the same steak cooked.
+// Cooking drives off water so density always rises -- a raw row under-counts
+// every time, and nobody logs a raw steak.
+is("sirloin steak prefers cooked over raw", pick("sirloin steak", [
+  food("Beef, top sirloin steak, raw", 140, 22, 0.2, 5.7),
+  food("Beef, top sirloin, steak, separable lean only, trimmed to 0\" fat, select, cooked, broiled", 177, 30, 0, 5.4),
+]), "Beef, top sirloin, steak, separable lean only, trimmed to 0\" fat, select, cooked, broiled");
+
+// Symmetric, like every other qualifier here: ask for raw and you get raw.
+is("raw sirloin steak still gets the raw row", pick("raw sirloin steak", [
+  food("Beef, top sirloin steak, raw", 140, 22, 0.2, 5.7),
+  food("Beef, top sirloin, steak, separable lean only, trimmed to 0\" fat, select, cooked, broiled", 177, 30, 0, 5.4),
+]), "Beef, top sirloin steak, raw");
+
+// The scope is what keeps this safe. USDA names most produce "X, raw" and for
+// those the raw row is the CORRECT one -- a blanket rule would gut produce.
+is("produce keeps its raw row", pick("spinach", [
+  food("Spinach, raw", 23, 2.9, 3.6, 0.4),
+]), "Spinach, raw");
+
+is("apple keeps its raw row", pick("apple", [
+  food("Apples, raw, with skin", 52, 0.3, 14, 0.2),
+]), "Apples, raw, with skin");
+
+// Explicitly asked for -- symmetric, like every other qualifier here.
+is("explicit raw still resolves", pick("raw ground beef", [
+  food("Beef, ground, raw", 254, 17, 0, 20),
+]), "Beef, ground, raw");
+
+// A bare cut name means the ordinary animal for that cut. Surfaced when the
+// cooked filter removed the raw beef row and game meat took its place.
+is("bare sirloin rejects game meat", pick("sirloin steak", [
+  food("Game meat , bison, top sirloin, separable lean only, 1\" steak, cooked, broiled", 171, 30, 0, 4.8),
+  food("Beef, top sirloin, steak, separable lean only, trimmed to 0\" fat, select, cooked, broiled", 177, 30, 0, 5.4),
+]), "Beef, top sirloin, steak, separable lean only, trimmed to 0\" fat, select, cooked, broiled");
+
+is("bison steak still gets bison", pick("bison steak", [
+  food("Game meat , bison, top sirloin, separable lean only, 1\" steak, cooked, broiled", 171, 30, 0, 4.8),
+]), "Game meat , bison, top sirloin, separable lean only, 1\" steak, cooked, broiled");
+
+// Smoked salmon is lox, a different product from a cooked fillet.
+is("bare salmon rejects smoked", pick("salmon", [
+  food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
+  food("Fish, salmon, chum, cooked, dry heat", 154, 26, 0, 4.8),
+]), "Fish, salmon, chum, cooked, dry heat");
+
+is("smoked salmon still gets smoked", pick("smoked salmon", [
+  food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
+]), "Fish, salmon, chinook, smoked");
+
+
 
 is("yogurt rejects frozen yogurt", pick("yogurt", [
   food("Frozen yogurts, chocolate", 131, 3.5, 22, 3.5),

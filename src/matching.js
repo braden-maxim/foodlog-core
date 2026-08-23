@@ -174,6 +174,50 @@ export function queryImpliesDry(query) {
   return /\b(dry|uncooked|raw)\b/i.test(query);
 }
 
+/* COOKED IS THE DEFAULT FOR FOODS NOBODY EATS RAW.
+ *
+ * USDA carries both states and its own ordering does not prefer either, so
+ * "sirloin steak" resolved to "Beef, top sirloin steak, raw" -- 140 kcal/100g
+ * against ~212 for the same steak cooked. Nobody logs a raw steak. Measured
+ * against the live USDA pool 2026-08-23; the cooked rows were right there in
+ * the same 50 results, scoring identically.
+ *
+ * The error is systematic and one-directional: cooking drives off water, so
+ * per-100g density always RISES. A raw row under-counts every time, by ~35%
+ * for beef. This is the same failure the dry-grain guard above exists for --
+ * dry rice at 365 against cooked at 130 -- and it gets the same treatment.
+ *
+ * SCOPED TO PROTEINS, AND THAT SCOPE IS LOAD-BEARING. USDA names most produce
+ * "Apples, raw", "Spinach, raw", "Carrots, raw", and for those the raw row is
+ * the CORRECT one. A blanket raw rejection would gut produce coverage to fix
+ * meat. Grains and legumes are already covered by isDryGrainEntry.
+ *
+ * NAME-ONLY, NO INFERENCE. Rejects solely on the word "raw" in the row name,
+ * which USDA is consistent about. No density heuristic: the dry-grain guard
+ * needed one because "Oats, rolled" states no preparation, whereas raw meat
+ * rows always say so. Fewer signals, fewer false positives.
+ */
+export const COOKED_BY_DEFAULT_PATTERN = /\b(beef|steak|sirloin|ribeye|rib eye|brisket|tenderloin|filet|chuck|flank|skirt|round|veal|lamb|mutton|pork|bacon|ham|sausage|chorizo|bison|buffalo|venison|elk|chicken|turkey|duck|goose|quail|salmon|tuna|cod|halibut|tilapia|trout|bass|snapper|mackerel|sardine|haddock|pollock|catfish|shrimp|prawn|crab|lobster|scallop|mussel|clam|octopus|squid|calamari|egg|eggs)\b/i;
+
+// Preparation words that settle it -- a row saying any of these is not raw,
+// whatever else the name contains ("Beef, cured, dried" is not a raw entry).
+const COOKED_STATE_RE = /\b(cooked|roasted|broiled|grilled|braised|baked|fried|pan[- ]?fried|stir[- ]?fried|steamed|boiled|poached|smoked|cured|dried|rotisserie|barbecued|stewed|simmered|seared|breaded)\b/i;
+
+/** A raw entry for a food that is essentially always eaten cooked. */
+export function isRawProteinEntry(result) {
+  if (!result || !result.name) return false;
+  const name = String(result.name);
+  if (!COOKED_BY_DEFAULT_PATTERN.test(name)) return false;
+  if (COOKED_STATE_RE.test(name)) return false;
+  return /\braw\b/i.test(name);
+}
+
+/** Did the user actually ask for it raw? Covers the dishes that are raw by
+ *  definition, so "beef tartare" and "tuna sashimi" are not fought with. */
+export function queryImpliesRaw(query) {
+  return /\b(raw|uncooked|sashimi|tartare|carpaccio|ceviche|sushi)\b/i.test(query);
+}
+
 export const SIZE_RE = /\b(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|floz|ounces?|oz\.?|milliliters?|ml|grams?|g|kilograms?|kg|pounds?|lbs?|pieces?|pcs?|ct|count)\b/i;
 export function extractSize(text) {
   const m = text.match(SIZE_RE);
@@ -438,6 +482,18 @@ export const FORM_QUALIFIERS = [
   // products instead is narrower and cannot misfire that way.
   "pastrami", "corned", "salami", "bologna", "pepperoni", "prosciutto",
   "mortadella", "backfat", "lard", "suet", "tallow",
+  // "smoked" is a PRODUCT, not a preparation, for the fish it applies to.
+  // Exposed 2026-08-23 alongside the cooked-by-default filter: with raw pink
+  // salmon gone, "salmon" resolved to "Fish, salmon, chinook, smoked" (117) --
+  // lox, not a fillet -- because it is one word shorter than "Fish, salmon,
+  // chinook, cooked, dry heat" and brevity reads as generality.
+  //
+  // Unlike the blanket "cured" rule rejected just above, this one is safe
+  // BECAUSE it is a single word rather than a process family: the canonical
+  // bacon row is "Pork, cured, bacon, cooked, microwaved", which contains no
+  // "smoked" at all. Verified against the live bacon pool, not assumed.
+  // Symmetric as always -- "smoked salmon" still gets smoked salmon.
+  "smoked",
   // ORGAN MEATS AND PARTS. "chicken" was resolving to "Chicken, feet, boiled"
   // -- and NOT as a tie: feet scored gen=1 against ground chicken's gen=2,
   // because "feet" is one short word and brevity still reads as generality.
@@ -451,6 +507,19 @@ export const FORM_QUALIFIERS = [
   // to "Milk, sheep, fluid" at 108 kcal/100g against ~62 for cow. Symmetric as
   // always, so "goat cheese" still gets goat cheese.
   "sheep", "goat", "buffalo", "ewe",
+  // GAME. Same rule, other end of the animal. Exposed 2026-08-23 by the
+  // cooked-by-default filter: with the raw beef row gone, "sirloin steak"
+  // resolved to "Game meat , bison, top sirloin, ... cooked, broiled" at 171
+  // kcal/100g, because genericnessRank scores it AHEAD of the beef cooked
+  // rows. A bare cut name means the ordinary animal for that cut -- beef for
+  // a sirloin, pork for a chop. "buffalo" was already listed and did not
+  // help: USDA writes the American species as "bison".
+  //
+  // "game" earns its place separately from the species: it is USDA's own
+  // category prefix ("Game meat , ..."), so it catches elk, boar and the rest
+  // without enumerating them.
+  "bison", "game", "venison", "elk", "caribou", "moose", "antelope", "boar",
+  "rabbit", "ostrich", "emu", "yak",
 ];
 
 /* A DISH is not its ingredient, and one extra word is enough to make it one.

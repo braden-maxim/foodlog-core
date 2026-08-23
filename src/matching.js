@@ -273,8 +273,26 @@ export function brandedSizeMismatch(query, cachedRow) {
   // Real branded seeds state a product size (12oz, 20oz, 30ct), never 100g,
   // so this cannot weaken the case the guard was built for: a 32oz Hulk
   // still cannot read a 20oz row.
+  //
+  // WIDENED 2026-08-23, and for the same reason again: 100 g was still too
+  // narrow. A curated row at 390 g -- "New York Strip Steak (390g, cooked)",
+  // 918 kcal -- is no more a product size than a 100 g row is. It is a weight,
+  // and a weight scales by arithmetic: parseQuantity gives 200/390 and
+  // scaleNutrition gives 471 kcal. The guard was rejecting the case where
+  // scaling is exactly right.
+  //
+  // Worse, it was BACKWARDS. A query stating 200 g was rejected; a query
+  // stating no size at all sailed through and returned the whole 918 kcal row
+  // unscaled, which is the reading that actually harms someone.
+  //
+  // GRAMS ONLY, deliberately, and ml is NOT included. The case this guard
+  // exists for is a branded drink sold in discrete volumes -- the comment's
+  // own "32oz Hulk cannot read a 20oz row" -- and those are sized in oz or ml,
+  // never in grams. Restricting the widening to grams fixes every weight-based
+  // food row without touching the case the guard was built for.
   const unit = String(cachedRow.serving_unit).toLowerCase();
-  if (Number(cachedRow.serving_size) === 100 && (unit === "g" || unit === "ml")) return false;
+  if (unit === "g") return false;
+  if (Number(cachedRow.serving_size) === 100 && unit === "ml") return false;
   if (qSize.unit !== unit) return true;
   return Math.abs(qSize.value - cachedRow.serving_size) > 0.01;
 }

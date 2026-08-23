@@ -987,6 +987,29 @@ is("a self-contradictory winner loses to the next candidate", pick("brown rice",
   food("Rice, brown, medium-grain, cooked", 112, 2.3, 23.5, 0.8),
 ]), "Rice, brown, medium-grain, cooked");
 
+// A GRAM SERVING IS A WEIGHT BASIS, NOT A PRODUCT SIZE. The 100 g exemption
+// was still too narrow -- a curated "New York Strip Steak (390g, cooked)" row
+// at 918 kcal was rejected for a query stating 200 g, the one case where
+// scaling is exactly right, while a query stating NO size returned the whole
+// 918 unscaled.
+is("a gram-based row scales instead of being rejected",
+  core.brandedSizeMismatch("new york strip steak 200g",
+    { source: "claude_web_search", serving_size: 390, serving_unit: "g" }), false);
+is("and the 100g density basis still passes",
+  core.brandedSizeMismatch("ribeye steak 8 oz",
+    { source: "claude_web_search", serving_size: 100, serving_unit: "g" }), false);
+// The case the guard exists for: branded drinks are sized in oz/ml, never g.
+is("a 32oz drink still cannot read a 20oz row",
+  core.brandedSizeMismatch("smoothie king hulk 32oz",
+    { source: "claude_web_search", serving_size: 20, serving_unit: "oz" }), true);
+is("nor a differently-sized ml row",
+  core.brandedSizeMismatch("some drink 591ml",
+    { source: "claude_web_search", serving_size: 355, serving_unit: "ml" }), true);
+// A usda row was never in scope for this guard at all.
+is("usda rows are untouched",
+  core.brandedSizeMismatch("chicken breast 200g",
+    { source: "usda", serving_size: 100, serving_unit: "g" }), false);
+
 is("smoked salmon still gets smoked", pick("smoked salmon", [
   food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
 ]), "Fish, salmon, chinook, smoked");

@@ -973,6 +973,36 @@ is("smoked salmon still gets smoked", pick("smoked salmon", [
   food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
 ]), "Fish, salmon, chinook, smoked");
 
+// HEAD-FOOD FALL-THROUGH IS FOR CATEGORIES ONLY.
+//
+// Regression bisected to 0e14085 on 2026-08-23. That commit taught headFoodOf
+// to skip a segment naming no BASE_FOOD, so USDA category prefixes stop hiding
+// the real head. But BASE_FOODS is ~15 words, so it also skipped segments
+// naming a real food that simply is not listed -- "Bacon, turkey, microwaved"
+// fell through its own head and reported "turkey" as the head food. That
+// exempted turkey from genericnessRank's addedStaples*20 penalty (charged only
+// when the staple is NOT the head), rank went 21 -> 1, and turkey bacon beat
+// the canonical pork row on a bare query. A 23% undercount on a common food.
+is("bare bacon keeps the pork row", pick("bacon", [
+  food("Bacon, turkey, microwaved", 368, 29, 3.4, 26),
+  food("Pork, cured, bacon, cooked, microwaved", 476, 35, 1.1, 36),
+]), "Pork, cured, bacon, cooked, microwaved");
+
+is("turkey bacon still gets turkey bacon", pick("turkey bacon", [
+  food("Bacon, turkey, microwaved", 368, 29, 3.4, 26),
+]), "Bacon, turkey, microwaved");
+
+is("an unrequested species in a non-head segment still costs 20",
+  core.genericnessRank("bacon", "Bacon, turkey, microwaved") >= 20, true);
+
+// The cases the fall-through genuinely exists for must keep working.
+is("category prefix is still seen past (rice milk)",
+  core.isOverlySpecific("rice", "Beverages, rice milk, unsweetened"), true);
+is("category prefix is still seen past (oat milk)",
+  core.isOverlySpecific("milk", "Oat milk, unsweetened, plain, refrigerated"), true);
+is("and oatmeal still reaches its cereal row",
+  core.isOverlySpecific("oatmeal", "Cereals, oats, regular and quick, not fortified, dry"), false);
+
 
 
 is("yogurt rejects frozen yogurt", pick("yogurt", [

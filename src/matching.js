@@ -653,6 +653,18 @@ export const BASE_FOODS = [
   "chicken", "turkey", "beef", "pork",
 ];
 
+/* USDA's own category prefixes -- the names the head-food fall-through exists
+ * to see past. Every word in a segment must be one of these for it to count as
+ * a category, so "Beverages" and "Cereals ready-to-eat" qualify while "Bacon"
+ * and "Pork" do not. Deliberately short: this list can only ever cause a
+ * segment to be SKIPPED, so a wrong entry hides a real head food. */
+const USDA_CATEGORY_WORDS = new Set([
+  "beverages", "beverage", "nuts", "seeds", "cereals", "ready", "eat",
+  "snacks", "sweets", "soups", "sauces", "gravies", "spices", "herbs",
+  "oils", "fats", "vegetables", "fruits", "juices", "legumes", "meats",
+  "poultry", "products", "prepared", "frozen", "canned", "baked",
+]);
+
 // The head of a USDA name is its first comma segment ("Cheese, mozzarella,
 // whole milk" -> cheese). Without a comma it is the last word, which is where
 // English puts the head of a compound: "Rice milk" is a milk, not a rice.
@@ -683,6 +695,30 @@ function headFoodOf(resultName, norm) {
     // rejected. Comma or no comma, the head of an English compound is last.
     const bases = words.filter((w) => BASE_FOODS.includes(w));
     if (bases.length) return bases[bases.length - 1];
+    // ONLY A CATEGORY MAY BE SKIPPED, not any segment that misses BASE_FOODS.
+    //
+    // The fall-through above was added for USDA's category prefixes, and the
+    // justification named them precisely: "Beverages, rice milk", "Nuts,
+    // coconut milk", "Cereals ready-to-eat". It was then implemented as "skip
+    // any segment with no staple in it", which is a much larger claim --
+    // BASE_FOODS is a short list of about fifteen words, so a segment naming a
+    // perfectly real food that simply is not on it got skipped too.
+    //
+    // Regression, bisected 2026-08-23: "Bacon, turkey, microwaved" fell
+    // through its own head segment (bacon is not a BASE_FOOD) and returned
+    // "turkey" as the head food. genericnessRank only charges addedStaples*20
+    // for a staple that is NOT the head, so the 20-point penalty on an
+    // unrequested species stopped applying -- rank went 21 -> 1 and turkey
+    // bacon (368) beat "Pork, cured, bacon, cooked, microwaved" (476) on a
+    // bare "bacon" query. A 23% undercount, and the pork row was never
+    // rejected by anything, merely out-ranked.
+    //
+    // A category is a closed set and a short one, so name it rather than
+    // inferring it from the absence of a staple. Anything else stops the
+    // search: a segment that names a food we do not recognise is still the
+    // head, and reporting no head at all is the honest answer -- which is
+    // exactly the pre-existing behaviour for those names.
+    if (!words.every((w) => USDA_CATEGORY_WORDS.has(w))) return null;
   }
   return null;
 }

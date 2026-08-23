@@ -6,6 +6,7 @@
 import {
   energyKcal, relevanceScore, genericnessRank, firstSegmentMatches, isOverlySpecific,
   isDryGrainEntry, queryImpliesDry, isRawProteinEntry, queryImpliesRaw,
+  implausiblyLowForFood, caloriesContradictMacros,
   preferMedianComposition, preferMedianValue, MIN_SCORE,
 } from "./matching.js";
 
@@ -44,6 +45,41 @@ export function getNutrient(nutrients, id) {
  *   sort           - relevance, then genericness, then USDA's own order
  *   tie-break      - composition, else calories, among rows tied on BOTH
  */
+/* The row buildUsdaResult WILL produce, built before selection so that guards
+ * which judge a finished row can vote on a candidate instead of discarding the
+ * winner after the fact.
+ *
+ * DISQUALIFY-AFTER-CHOOSING is a shape this codebase has hit before and named
+ * (see buildUsdaResult's note on the 0-kcal filter). The caller ranks, picks
+ * one, and only then applies implausiblyLowForFood / caloriesContradictMacros
+ * -- so a bad top candidate does not lose to the next one, it takes the whole
+ * lookup down with it and the user gets no reference at all.
+ *
+ * Live case, 2026-08-23: "chicken breast" ranked "Chicken breast, oven-roasted,
+ * fat-free, sliced" (79 kcal/100g deli slices) first, the write path rejected
+ * it against the 90 kcal chicken floor, and the endpoint returned hit:false --
+ * every time, forever, on one of the most commonly logged foods. "Chicken,
+ * broilers or fryers, breast, meat only, cooked, roasted" (165) was sitting in
+ * the same pool the whole time.
+ *
+ * Mirrors buildUsdaResult's arithmetic exactly, serving scaling included; if
+ * that ever diverges the guards start judging a row nobody will build. */
+function candidateRow(food) {
+  const nutrients = food.foodNutrients || [];
+  const per100Cal = energyKcal(nutrients);
+  const servingSize = food.servingSize || 100;
+  const f = servingSize / 100;
+  return {
+    name: food.description,
+    calories: per100Cal == null ? null : Math.round(per100Cal * f),
+    protein: Math.round((getNutrient(nutrients, N_PROTEIN) || 0) * f * 10) / 10,
+    carbs: Math.round((getNutrient(nutrients, N_CARBS) || 0) * f * 10) / 10,
+    fat: Math.round((getNutrient(nutrients, N_FAT) || 0) * f * 10) / 10,
+    serving_size: servingSize,
+    serving_unit: food.servingUnit || "g",
+  };
+}
+
 export function selectBestFood(foods, query) {
   const scored = (foods || [])
     .map((food, i) => ({ food, i, score: relevanceScore(query, food.description), rank: genericnessRank(query, food.description) }))
@@ -69,6 +105,16 @@ export function selectBestFood(foods, query) {
     // has to be rejected later -- an asymmetric guard is what produces a
     // permanent miss that re-caches the same bad row forever.
     .filter(({ food }) => queryImpliesRaw(query) || !isRawProteinEntry({ name: food.description }))
+    // The two guards the callers apply to the FINISHED row, applied here as
+    // well so they demote a candidate rather than sink the lookup. Both are
+    // conservative by construction -- implausiblyLowForFood only fires on a
+    // density no real form of the food reaches, caloriesContradictMacros only
+    // on a row that disagrees with itself -- so a candidate either of them
+    // rejects was never servable anyway.
+    .filter(({ food }) => {
+      const row = candidateRow(food);
+      return !implausiblyLowForFood(row) && !caloriesContradictMacros(row);
+    })
     // The index keeps the sort stable, so USDA's own order still decides when
     // nothing else distinguishes two rows.
     .sort((a, b) => b.score - a.score || a.rank - b.rank || a.i - b.i);

@@ -969,6 +969,24 @@ is("bare salmon rejects smoked", pick("salmon", [
   food("Fish, salmon, chum, cooked, dry heat", 154, 26, 0, 4.8),
 ]), "Fish, salmon, chum, cooked, dry heat");
 
+// DISQUALIFY-AFTER-CHOOSING. implausiblyLowForFood and caloriesContradictMacros
+// were applied by the CALLER to the finished row, so a bad top candidate did
+// not lose to the next one -- it took the whole lookup down and the endpoint
+// returned hit:false. Live 2026-08-23: "chicken breast" ranked the 79 kcal
+// deli-slice row first, the write path rejected it against the 90 kcal chicken
+// floor, and one of the most commonly logged foods had NO reference at all,
+// every time, while the correct row sat in the same pool.
+is("an implausibly low winner loses to the next candidate", pick("chicken breast", [
+  food("Chicken breast, oven-roasted, fat-free, sliced", 79, 17, 1.4, 0.7),
+  food("Chicken, broilers or fryers, breast, meat only, cooked, roasted", 165, 31, 0, 3.57),
+]), "Chicken, broilers or fryers, breast, meat only, cooked, roasted");
+
+// Same for a row that disagrees with its own macros.
+is("a self-contradictory winner loses to the next candidate", pick("brown rice", [
+  food("Rice, brown, long-grain, cooked", 1580, 2.6, 23, 0.9),
+  food("Rice, brown, medium-grain, cooked", 112, 2.3, 23.5, 0.8),
+]), "Rice, brown, medium-grain, cooked");
+
 is("smoked salmon still gets smoked", pick("smoked salmon", [
   food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
 ]), "Fish, salmon, chinook, smoked");

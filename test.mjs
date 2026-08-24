@@ -1010,6 +1010,43 @@ is("usda rows are untouched",
   core.brandedSizeMismatch("chicken breast 200g",
     { source: "usda", serving_size: 100, serving_unit: "g" }), false);
 
+// NORMALIZEQUERY: A NUMBER CAN BE IDENTITY RATHER THAN QUANTITY.
+// A menu number names the product; a fraction names the portion. Both were
+// being deleted because the digit sits next to punctuation, which restores the
+// word boundary that protects "2pct".
+is("a menu number survives",   core.normalizeQuery("Jersey Mike's #5 The Super Sub"), "jersey mike's #5 the super sub");
+is("and distinguishes items",  core.normalizeQuery("Jersey Mike's #7") !== core.normalizeQuery("Jersey Mike's #5"), true);
+is("a fraction survives",      core.normalizeQuery("Bagel, 1/2 bagel"), "bagel, 1/2 bagel");
+// The boundaries are load-bearing: without \b the digit inside "2pct" matches
+// and expandPercents' work is undone. Caught on the first run of this change.
+is("a composition percent is untouched", core.normalizeQuery("Fairlife 2% Reduced Fat Milk"), "fairlife 2pct reduced fat milk");
+is("and 1% stays distinct from 2%",
+  core.normalizeQuery("Fairlife 1% Milk") !== core.normalizeQuery("Fairlife 2% Milk"), true);
+// An ordinary quantity is still a quantity.
+is("a plain count is still stripped", core.normalizeQuery("2 eggs"), "eggs");
+is("and a weight is still stripped",  core.normalizeQuery("8 oz chicken breast"), "chicken breast");
+
+// PUNCTUATION LEFT BEHIND BY A STRIP IS NOT HARMLESS. "ribeye steak ()" is a
+// different cache key from "ribeye steak", so a parenthesised query wrote an
+// orphan row beside the curated one instead of reading it. ~170 such keys had
+// accumulated in the shared cache by 2026-08-23.
+is("emptied parens do not become a key", core.normalizeQuery("ribeye steak (8 oz)"), "ribeye steak");
+is("a parenthesised query reaches the clean key",
+  core.normalizeQuery("ribeye steak (8 oz)") === core.normalizeQuery("ribeye steak"), true);
+is("partially emptied parens collapse", core.normalizeQuery("New York Strip Steak (390g, cooked)"), "new york steak, cooked");
+is("leading punctuation is trimmed",  core.normalizeQuery(". potato"), "potato");
+is("trailing punctuation is trimmed", core.normalizeQuery("yellow rice ."), "yellow rice");
+is("an orphan and its clean twin now agree",
+  core.normalizeQuery(". potato") === core.normalizeQuery("potato"), true);
+// Interior punctuation that still distinguishes is kept.
+is("interior detail survives", core.normalizeQuery("Smoothie King Gladiator (banana & strawberry)"),
+  "smoothie king gladiator banana & strawberry");
+
+// brandCacheKey keeps sizes distinct on top of all of the above.
+is("sized branded keys stay distinct",
+  core.brandCacheKey("Miller Lite Beer (12 oz can)") !== core.brandCacheKey("Miller Lite Beer (16 oz)"), true);
+is("and a sized key is clean now", core.brandCacheKey("ribeye steak (8 oz)"), "ribeye steak 8oz");
+
 is("smoked salmon still gets smoked", pick("smoked salmon", [
   food("Fish, salmon, chinook, smoked", 117, 18, 0, 4.3),
 ]), "Fish, salmon, chinook, smoked");

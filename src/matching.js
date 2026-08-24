@@ -297,14 +297,68 @@ export function brandedSizeMismatch(query, cachedRow) {
   return Math.abs(qSize.value - cachedRow.serving_size) > 0.01;
 }
 
+/* A NUMBER CAN BE IDENTITY RATHER THAN QUANTITY, and the two look identical to
+ * a bare \d+ strip.
+ *
+ * "2%" was already safe -- expandPercents turns it into "2pct" above, and no
+ * word boundary sits inside that token. Two Fairlife products do NOT collide;
+ * the "fairlife % reduced fat" rows in the shared cache are fossils from before
+ * expandPercents shipped. Verified 2026-08-23 rather than assumed.
+ *
+ * What is still stripped is a digit attached to punctuation, which is where the
+ * boundary reappears:
+ *
+ *   "Jersey Mike's #5 The Super Sub"  ->  "jersey mike's # the super sub"
+ *   "Jersey Mike's #7 Turkey ..."     ->  "jersey mike's # turkey ..."
+ *
+ * Two different sandwiches, one key, and no size suffix for brandCacheKey to
+ * recover it with. A menu number is the product's name, not how much of it
+ * there is. Same for a fraction: "1/2 bagel" is a different row from a bagel.
+ *
+ * Excluded by context rather than by a list, so an ordinary quantity is
+ * untouched -- "2 eggs" still normalises to "eggs".
+ */
+//
+// THE WORD BOUNDARIES ARE LOAD-BEARING, not decoration. Without \b the digit
+// inside "2pct" matches and expandPercents' work is undone -- caught by the
+// Fairlife case on the first run of this change.
+const IDENTITY_NUMBER = /(?<![#\d\/])\b\d+\b(?!\/)/g;
+
+/* PUNCTUATION LEFT BEHIND BY THE STRIPS IS NOT HARMLESS.
+ *
+ * Removing "8 oz" from "ribeye steak (8 oz)" leaves "ribeye steak ()", which is
+ * a DIFFERENT cache key from "ribeye steak" -- so a parenthesised query writes
+ * an orphan row beside the curated one instead of reading it. The shared cache
+ * had ~170 such keys by 2026-08-23.
+ *
+ * pg_trgm ignores punctuation when building trigrams, so those orphans also tie
+ * at similarity 1.0 with their clean twin and could win the tie at random until
+ * match_nutrition_cache got a deterministic ORDER BY. Measured: a correct
+ * seeded 'potato' row lost to '. potato' -> "Potato pancakes", 268 kcal.
+ *
+ * Parentheses go entirely once their contents may have been stripped -- they
+ * carry no identity of their own, and dropping them collapses the orphan onto
+ * the clean key, which is the outcome wanted. Interior commas and ampersands
+ * stay, since "banana & strawberry" is still distinguishing.
+ *
+ * NO MIGRATION. Existing keys are not rewritten; they stay reachable by their
+ * own strings and simply stop being produced. A clean key and its old orphan
+ * have different trigram sets once a stripped number is preserved, so the clean
+ * one wins on merit rather than on a tie-break, and the cache converges by
+ * itself at the cost of at most one extra lookup per affected item.
+ */
 export function normalizeQuery(q) {
   return expandPercents(foldAccents(q))
     .toLowerCase()
     .trim()
     .replace(/\b\d+(\.\d+)?\s*(g|oz|lb|lbs|gram|grams|ounce|ounces|pound|pounds|ml|kg|mg|l|liter|liters|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons)\b/g, "") // strip weights/measurements
-    .replace(/\b\d+\b/g, "")          // strip standalone numbers
+    .replace(IDENTITY_NUMBER, "")     // strip standalone quantities, keep #N and N/M
     .replace(/\b(cup|cups|tub|tubs|jar|jars|container|bag|box|pack|bottle|can|cans|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons|slice|slices|piece|pieces|strip|strips|serving|servings)\b/g, "") // strip containers/units
+    .replace(/[()]/g, " ")            // parens are scaffolding, not identity
     .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")        // normalise comma spacing
+    .replace(/(?:,\s*)+/g, ", ")       // collapse commas orphaned by a strip
+    .replace(/^[\s,.\/&:;-]+|[\s,.\/&:;-]+$/g, "")  // trim punctuation left at either end
     .trim();
 }
 
